@@ -1,0 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg: #F4F6FA;
+  --bg-elevated: #FFFFFF;
+  --bg-elevated-2: #EEF1F6;
+  --hairline: #E1E6EE;
+
+  --text-primary: #16233A;
+  --text-secondary: #5C6B80;
+  --text-faint: #93A0B3;
+
+  --teal: #3B82F6;
+  --teal-dim: #E8F0FE;
+  --amber: #C97C0A;
+  --amber-dim: #FDF1DA;
+  --rose: #E5484D;
+  --rose-dim: #FCE8E9;
+  --violet: #0EA5A0;
+
+  --accent-gradient: linear-gradient(135deg, #17B8A6 0%, #3B82F6 100%);
+
+  --nav-bg-gradient: linear-gradient(135deg, #0E1826 0%, #16243A 100%);
+  --nav-text: #9FB0C7;
+  --nav-text-active: #FFFFFF;
+  --nav-hairline: #24344B;
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-pill: 999px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--teal-dim);
+  color: var(--teal);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border-radius: 4px;
+}

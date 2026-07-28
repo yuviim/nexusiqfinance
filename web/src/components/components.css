@@ -1,0 +1,150 @@
+.card {
+  background: linear-gradient(160deg, var(--bg-elevated) 0%, var(--bg-elevated-2) 160%);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  border: 1px solid var(--hairline);
+}
+
+.section-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0 0 10px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--hairline);
+  margin: 10px 0;
+}
+
+.progress-track {
+  width: 100%;
+  background: var(--bg-elevated-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.pill {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  font-size: 11px;
+  align-items: center;
+  gap: 4px;
+}
+.pill--good { background: var(--teal-dim); color: var(--teal); }
+.pill--warn { background: var(--amber-dim); color: var(--amber); }
+.pill--alert { background: var(--rose-dim); color: var(--rose); }
+.pill--neutral { background: var(--bg-elevated-2); color: var(--text-secondary); }
+
+.gauge-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gauge-center {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 12px;
+}
+.gauge-value {
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--text-primary);
+}
+.gauge-label {
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  max-width: 120px;
+}
+
+input[type="text"], input[type="email"], input[type="password"], input[type="number"] {
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  width: 100%;
+  outline: none;
+}
+input:focus {
+  border-color: var(--teal);
+}
+
+.btn {
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 12px 20px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.btn--teal { background: var(--accent-gradient); color: #FFFFFF; }
+.btn--amber { background: var(--amber); color: var(--bg); }
+.btn--ghost { background: var(--bg-elevated-2); color: var(--text-secondary); }
+.btn--pill { border-radius: var(--radius-pill); }
+.btn:disabled { opacity: 0.6; cursor: default; }
+
+.chip {
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated-2);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+}
+.chip--active {
+  background: var(--violet);
+  color: var(--bg);
+}
+
+.date-field-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 40px;
+  height: 100%;
+  cursor: pointer;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 10, 20, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.modal-card {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+}
