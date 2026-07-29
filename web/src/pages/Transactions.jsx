@@ -14,6 +14,7 @@ export default function Transactions() {
   const [quickText, setQuickText] = useState('');
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickReply, setQuickReply] = useState(null);
+  const [quickFailed, setQuickFailed] = useState(false);
 
   const categories = data.budgets.length > 0 ? data.budgets.map((b) => b.category) : ['Other'];
 
@@ -22,12 +23,19 @@ export default function Transactions() {
     if (!text || quickBusy) return;
     setQuickBusy(true);
     setQuickReply(null);
+    setQuickFailed(false);
     try {
       const res = await api.askTracker(token, text);
-      setQuickReply(res.reply);
-      setQuickText('');
+      if (res.created) {
+        setQuickReply(res.reply);
+        setQuickText('');
+      } else {
+        setQuickFailed(true);
+        setQuickReply(`Nothing was actually logged — the agent replied without saving anything. It said: "${res.reply}" Try rephrasing (e.g. include a clear amount and category).`);
+      }
       await refresh();
     } catch (e) {
+      setQuickFailed(true);
       setQuickReply(e.message);
     } finally {
       setQuickBusy(false);
@@ -66,7 +74,7 @@ export default function Transactions() {
           </button>
         </div>
         {!!quickReply && (
-          <p style={{ margin: '10px 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>{quickReply}</p>
+          <p style={{ margin: '10px 0 0', fontSize: 13, color: quickFailed ? 'var(--rose)' : 'var(--text-secondary)' }}>{quickReply}</p>
         )}
       </Card>
 

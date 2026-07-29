@@ -247,7 +247,12 @@ Use category "Income" only for type "income" (or the closest matching category i
 "Income" isn't in the list). Call create_transaction with these fields. If the message \
 isn't a describable transaction, or is too ambiguous to extract an amount and category \
 confidently (and doesn't match a known recurring bill), do NOT call the tool — instead \
-ask a short clarifying question."""
+ask a short clarifying question.
+
+Critical: never say a transaction was "recorded," "logged," or "saved" unless you \
+actually called create_transaction in this same turn. If you're asking a clarifying \
+question instead of calling the tool, do not describe the transaction as already \
+saved anywhere in your reply."""
 
 
 def _tracker_tools(categories):
@@ -306,8 +311,21 @@ def run_tracker(user_id, text):
         recurring_bills=recurring_bills_desc,
     )
     tools = _tracker_tools(categories)
-    executors = {'create_transaction': _build_create_transaction_executor(user_id)}
-    return _run_tool_loop(system_prompt, tools, executors, text)
+
+    outcome = {}
+
+    def tracked_executor(input_data):
+        result = _build_create_transaction_executor(user_id)(input_data)
+        outcome.update(result)
+        return result
+
+    executors = {'create_transaction': tracked_executor}
+    reply = _run_tool_loop(system_prompt, tools, executors, text)
+    return {
+        'reply': reply,
+        'created': bool(outcome.get('created')),
+        'transaction': outcome.get('transaction'),
+    }
 
 
 # ---------------------------------------------------------------------------

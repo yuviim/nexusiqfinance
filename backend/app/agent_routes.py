@@ -37,10 +37,10 @@ def tracker():
     if not text:
         return jsonify({'error': 'text is required'}), 400
     try:
-        reply = agents.run_tracker(_current_user_id(), text)
+        result = agents.run_tracker(_current_user_id(), text)
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 503
-    return jsonify({'reply': reply})
+    return jsonify(result)
 
 
 @agents_bp.post('/auditor')
