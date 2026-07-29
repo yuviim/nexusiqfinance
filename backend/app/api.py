@@ -497,6 +497,14 @@ def update_profile():
             user.sip_monthly = float(payload['sipMonthly'])
         except (TypeError, ValueError):
             return jsonify({'error': 'sipMonthly must be a number'}), 400
+    if 'salaryDay' in payload:
+        try:
+            day = int(payload['salaryDay'])
+        except (TypeError, ValueError):
+            return jsonify({'error': 'salaryDay must be a number'}), 400
+        if not (1 <= day <= 31):
+            return jsonify({'error': 'salaryDay must be between 1 and 31'}), 400
+        user.salary_day = day
     db.session.commit()
     return jsonify({**user.to_profile_dict(), 'sipMonthly': user.sip_monthly})
 

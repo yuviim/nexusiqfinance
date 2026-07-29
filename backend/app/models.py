@@ -28,6 +28,7 @@ class User(db.Model):
     monthly_budget = db.Column(db.Float, default=0)
     sip_monthly = db.Column(db.Float, default=0)
     risk_profile = db.Column(db.String(20), default='moderate')  # conservative | moderate | aggressive
+    salary_day = db.Column(db.Integer, default=1)  # day of month the pay cycle starts (1 = calendar month)
     created_at = db.Column(db.DateTime, default=now_utc)
 
     def set_password(self, password):
@@ -42,6 +43,7 @@ class User(db.Model):
             'monthlyIncome': self.monthly_income,
             'monthlyBudget': self.monthly_budget,
             'riskProfile': self.risk_profile or 'moderate',
+            'salaryDay': self.salary_day or 1,
         }
 
 

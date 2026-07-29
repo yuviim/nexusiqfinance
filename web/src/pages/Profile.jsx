@@ -15,6 +15,7 @@ export default function Profile() {
   const { user, logout } = useAuth();
   const [income, setIncome] = useState(String(data.profile.monthlyIncome));
   const [budget, setBudget] = useState(String(data.profile.monthlyBudget));
+  const [salaryDay, setSalaryDay] = useState(String(data.profile.salaryDay || 1));
   const [resetting, setResetting] = useState(false);
 
   const handleReset = async () => {
@@ -86,6 +87,22 @@ export default function Profile() {
           value={budget}
           onChange={(e) => setBudget(e.target.value)}
           onBlur={() => setProfile({ monthlyBudget: parseFloat(budget) || data.profile.monthlyBudget })}
+          style={{ marginBottom: 14 }}
+        />
+        <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+          Salary day (Dashboard tracks each month from this day to the day before it next month)
+        </label>
+        <input
+          type="number"
+          min="1"
+          max="31"
+          value={salaryDay}
+          onChange={(e) => setSalaryDay(e.target.value)}
+          onBlur={() => {
+            const day = Math.min(31, Math.max(1, parseInt(salaryDay, 10) || 1));
+            setSalaryDay(String(day));
+            setProfile({ salaryDay: day });
+          }}
         />
       </Card>
 

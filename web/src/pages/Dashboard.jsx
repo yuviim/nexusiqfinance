@@ -4,17 +4,38 @@ import { TrendChart } from '../components/TrendChart';
 import { useWealth } from '../store/DataContext';
 import { formatINR } from '../format';
 
-function monthKeyOf(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Returns { start, nextStart } for the pay cycle `offset` cycles away from the
+// current one (offset 0 = the cycle containing today, negative = past cycles).
+// A cycle runs from `salaryDay` of one month up to (but not including)
+// `salaryDay` of the next month — e.g. salaryDay=26 means 26 Jul – 25 Aug.
+function cycleForOffset(salaryDay, offset) {
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth();
+  if (now.getDate() < salaryDay) {
+    month -= 1;
+  }
+  month += offset;
+  while (month < 0) {
+    month += 12;
+    year -= 1;
+  }
+  while (month > 11) {
+    month -= 12;
+    year += 1;
+  }
+  const start = new Date(year, month, salaryDay);
+  const nextStart = new Date(year, month + 1, salaryDay);
+  return { start, nextStart };
 }
 
-function parseMonthKey(key) {
-  const [y, m] = key.split('-').map(Number);
-  return { year: y, month: m - 1 }; // JS month is 0-indexed
-}
-
-function daysInMonth(year, month) {
-  return new Date(year, month + 1, 0).getDate();
+function formatCycleLabel(start, nextStart) {
+  const endDisplay = new Date(nextStart.getTime() - DAY_MS);
+  const fmt = (d) => d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  const year = endDisplay.getFullYear();
+  return `${fmt(start)} – ${fmt(endDisplay)} ${year}`;
 }
 
 function greeting() {
@@ -26,55 +47,52 @@ function greeting() {
 
 export default function Dashboard() {
   const { data } = useWealth();
-  const now = new Date();
-  const currentMonthKey = monthKeyOf(now);
-  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
+  const salaryDay = Math.min(31, Math.max(1, data.profile.salaryDay || 1));
+  const [offset, setOffset] = useState(0);
 
-  const { year, month } = parseMonthKey(selectedMonth);
+  const { start, nextStart } = useMemo(() => cycleForOffset(salaryDay, offset), [salaryDay, offset]);
+  const { start: prevStart } = useMemo(() => cycleForOffset(salaryDay, offset - 1), [salaryDay, offset]);
+  const prevNextStart = start; // previous cycle's exclusive end = this cycle's start
 
-  const prevDate = new Date(year, month - 1, 1);
-  const prevYear = prevDate.getFullYear();
-  const prevMonth = prevDate.getMonth();
-
-  const txInMonth = (y, m) =>
+  const txInRange = (rangeStart, rangeEnd) =>
     data.transactions.filter((t) => {
       const d = new Date(t.date);
-      return d.getFullYear() === y && d.getMonth() === m;
+      return d >= rangeStart && d < rangeEnd;
     });
 
-  const thisMonthTx = useMemo(() => txInMonth(year, month), [data.transactions, year, month]);
-  const prevMonthTx = useMemo(() => txInMonth(prevYear, prevMonth), [data.transactions, prevYear, prevMonth]);
+  const thisCycleTx = useMemo(() => txInRange(start, nextStart), [data.transactions, start, nextStart]);
+  const prevCycleTx = useMemo(() => txInRange(prevStart, prevNextStart), [data.transactions, prevStart, prevNextStart]);
 
-  const income = thisMonthTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const expense = thisMonthTx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const income = thisCycleTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expense = thisCycleTx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 
   const spendByCategory = useMemo(() => {
     const map = {};
-    thisMonthTx.filter((t) => t.type === 'expense').forEach((t) => {
+    thisCycleTx.filter((t) => t.type === 'expense').forEach((t) => {
       map[t.category] = (map[t.category] || 0) + t.amount;
     });
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
-  }, [thisMonthTx]);
+  }, [thisCycleTx]);
 
   const totalBudgeted = data.budgets.reduce((s, b) => s + b.limit, 0);
 
   const budgetRows = useMemo(() => {
     return data.budgets.map((b) => {
-      const spent = thisMonthTx
+      const spent = thisCycleTx
         .filter((t) => t.type === 'expense' && t.category === b.category)
         .reduce((s, t) => s + t.amount, 0);
       return { ...b, spent, pct: b.limit ? spent / b.limit : 0 };
     });
-  }, [data.budgets, thisMonthTx]);
+  }, [data.budgets, thisCycleTx]);
 
   const trend = useMemo(() => {
-    const daysThis = daysInMonth(year, month);
-    const daysPrev = daysInMonth(prevYear, prevMonth);
-    const buildCumulative = (txs, totalDays) => {
+    const daysThis = Math.round((nextStart - start) / DAY_MS);
+    const daysPrev = Math.round((prevNextStart - prevStart) / DAY_MS);
+    const buildCumulative = (txs, rangeStart, totalDays) => {
       const daily = Array(totalDays).fill(0);
       txs.filter((t) => t.type === 'expense').forEach((t) => {
-        const day = new Date(t.date).getDate();
-        if (day >= 1 && day <= totalDays) daily[day - 1] += t.amount;
+        const dayIdx = Math.floor((new Date(t.date) - rangeStart) / DAY_MS);
+        if (dayIdx >= 0 && dayIdx < totalDays) daily[dayIdx] += t.amount;
       });
       const cumulative = [];
       let running = 0;
@@ -85,33 +103,39 @@ export default function Dashboard() {
       return cumulative;
     };
     return {
-      current: buildCumulative(thisMonthTx, daysThis),
-      previous: buildCumulative(prevMonthTx, daysPrev),
+      current: buildCumulative(thisCycleTx, start, daysThis),
+      previous: buildCumulative(prevCycleTx, prevStart, daysPrev),
     };
-  }, [thisMonthTx, prevMonthTx, year, month, prevYear, prevMonth]);
+  }, [thisCycleTx, prevCycleTx, start, nextStart, prevStart, prevNextStart]);
 
-  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-  const prevMonthLabel = new Date(prevYear, prevMonth, 1).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+  const cycleLabel = formatCycleLabel(start, nextStart);
+  const prevCycleLabel = formatCycleLabel(prevStart, prevNextStart);
 
   return (
     <div className="stack">
       <div className="page-header-row">
         <h1 className="page-title" style={{ margin: 0 }}>{greeting()}, {data.profile.name}</h1>
-        <input
-          type="month"
-          value={selectedMonth}
-          max={currentMonthKey}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn btn--ghost" style={{ padding: '8px 14px' }} onClick={() => setOffset((o) => o - 1)}>‹</button>
+          <span style={{ fontWeight: 600, fontSize: 14, minWidth: 150, textAlign: 'center' }}>{cycleLabel}</span>
+          <button
+            className="btn btn--ghost"
+            style={{ padding: '8px 14px', opacity: offset >= 0 ? 0.4 : 1 }}
+            onClick={() => setOffset((o) => Math.min(0, o + 1))}
+            disabled={offset >= 0}
+          >
+            ›
+          </button>
+        </div>
       </div>
 
       <div className="row">
         <Card>
-          <SectionLabel>Income — {monthLabel}</SectionLabel>
+          <SectionLabel>Income — this cycle</SectionLabel>
           <div style={{ fontWeight: 700, fontSize: 26, color: 'var(--teal)' }}>{formatINR(income)}</div>
         </Card>
         <Card>
-          <SectionLabel>Expense — {monthLabel}</SectionLabel>
+          <SectionLabel>Expense — this cycle</SectionLabel>
           <div style={{ fontWeight: 700, fontSize: 26, color: 'var(--rose)' }}>{formatINR(expense)}</div>
         </Card>
       </div>
@@ -147,7 +171,7 @@ export default function Dashboard() {
       <SectionLabel style={{ marginLeft: 2 }}>Spend by category</SectionLabel>
       <Card>
         {spendByCategory.length === 0 ? (
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>No expenses logged for {monthLabel} yet.</p>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>No expenses logged for {cycleLabel} yet.</p>
         ) : (
           spendByCategory.map(([cat, amt]) => (
             <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 14 }}>
@@ -158,13 +182,13 @@ export default function Dashboard() {
         )}
       </Card>
 
-      <SectionLabel style={{ marginLeft: 2 }}>Spend trend — this month vs. last</SectionLabel>
+      <SectionLabel style={{ marginLeft: 2 }}>Spend trend — this cycle vs. last</SectionLabel>
       <Card>
         <TrendChart
           seriesA={trend.current}
           seriesB={trend.previous}
-          labelA={monthLabel}
-          labelB={prevMonthLabel}
+          labelA={cycleLabel}
+          labelB={prevCycleLabel}
         />
       </Card>
     </div>

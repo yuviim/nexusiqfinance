@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext';
 const CACHE_KEY = 'wealthos:cache';
 
 const emptyState = {
-  profile: { name: '', monthlyIncome: 0, monthlyBudget: 0, riskProfile: 'moderate' },
+  profile: { name: '', monthlyIncome: 0, monthlyBudget: 0, riskProfile: 'moderate', salaryDay: 1 },
   assets: [],
   liabilities: [],
   transactions: [],
