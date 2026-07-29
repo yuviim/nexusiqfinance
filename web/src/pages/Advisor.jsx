@@ -1,26 +1,39 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Card, SectionLabel } from '../components/ui';
 import '../components/markdown.css';
 import { useAuth } from '../store/AuthContext';
 import { useWealth } from '../store/DataContext';
 import { api } from '../api/client';
-import { formatINR } from '../format';
 
-const WELCOME = "I'm your financial advisor agent. Ask me anything about your budget, savings rate, surplus, or where to invest — I'll pull your current numbers before answering.";
+const WELCOME = "I'm your financial advisor. I can see your budget, banks, investments, goals, and tax — ask me anything, or tell me about a transaction and I'll log it for you.";
+
+const CONNECTED = ['Budget', 'Banks', 'Transactions', 'Investments', 'Goals', 'Tax'];
+
+const ACTION_CARDS = [
+  { key: 'budget', label: 'Budget & Spend', sub: 'This month', question: 'How am I doing on my budget this month? Break it down by category.' },
+  { key: 'invest', label: 'Investments', sub: 'Where to invest', question: 'Given my current allocation, risk profile, and surplus, where should I invest right now?' },
+  { key: 'tax', label: 'Tax', sub: 'Regime & TDS', question: 'Walk me through my tax situation — which regime is better, and am I on track with TDS?' },
+];
 
 const SUGGESTIONS = [
-  'Where should I invest my surplus?',
   'Am I saving enough this month?',
   'Should I pay off a loan faster or invest?',
   'How am I doing on my goals?',
+  'Add food cost 480 california burrito',
 ];
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export default function Advisor() {
   const { token } = useAuth();
-  const { derived } = useWealth();
-  const [messages, setMessages] = useState([{ role: 'assistant', text: WELCOME }]);
+  const { data, refresh } = useWealth();
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -28,7 +41,7 @@ export default function Advisor() {
   const textareaRef = useRef(null);
   const isFirstRender = useRef(true);
 
-  const hasConversation = messages.length > 1;
+  const hasConversation = messages.length > 0;
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -55,6 +68,7 @@ export default function Advisor() {
     try {
       const res = await api.askAdvisor(token, question);
       setMessages((m) => [...m, { role: 'assistant', text: res.reply }]);
+      if (res.created) await refresh();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -63,7 +77,7 @@ export default function Advisor() {
   };
 
   const newChat = () => {
-    setMessages([{ role: 'assistant', text: WELCOME }]);
+    setMessages([]);
     setError(null);
     setInput('');
   };
@@ -72,28 +86,52 @@ export default function Advisor() {
     <div className="stack" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="page-header-row">
         <h1 className="page-title" style={{ margin: 0 }}>Advisor</h1>
-        <button className="btn btn--ghost" onClick={newChat} disabled={busy}>New chat</button>
+        {hasConversation && <button className="btn btn--ghost" onClick={newChat} disabled={busy}>New chat</button>}
       </div>
 
       <div style={{ maxWidth: 760, margin: '0 auto', width: '100%' }}>
-        <div className="row" style={{ marginBottom: 16 }}>
-          <Card>
-            <SectionLabel>Savings rate</SectionLabel>
-            <div style={{ fontWeight: 700, fontSize: 22 }}>{derived.savingsRate}%</div>
-          </Card>
-          <Card>
-            <SectionLabel>Financial health</SectionLabel>
-            <div style={{ fontWeight: 700, fontSize: 22 }}>
-              {derived.financialHealthScore}<span style={{ fontWeight: 500, fontSize: 13, color: 'var(--text-secondary)' }}> /100</span>
+        {!hasConversation ? (
+          <>
+            <div style={{ textAlign: 'center', padding: '24px 0 20px' }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: 18, background: 'var(--accent-gradient)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px',
+                boxShadow: '0 8px 24px -8px rgba(59,130,246,0.4)',
+              }}>
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" fill="white" />
+                </svg>
+              </div>
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 6px' }}>{greeting()}, {data.profile.name}</h2>
+              <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>{WELCOME}</p>
             </div>
-          </Card>
-          <Card>
-            <SectionLabel>Spent this month</SectionLabel>
-            <div style={{ fontWeight: 700, fontSize: 22 }}>{formatINR(derived.spentThisMonth)}</div>
-          </Card>
-        </div>
 
-        <div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginBottom: 20 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-faint)', fontWeight: 600, marginRight: 2 }}>CONNECTED:</span>
+              {CONNECTED.map((c) => <span key={c} className="chip chip--active" style={{ cursor: 'default' }}>{c}</span>)}
+            </div>
+
+            <div className="row" style={{ marginBottom: 16 }}>
+              {ACTION_CARDS.map((card) => (
+                <div
+                  key={card.key}
+                  className="card"
+                  style={{ cursor: 'pointer', textAlign: 'center', padding: '18px 12px' }}
+                  onClick={() => send(card.question)}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{card.label}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>{card.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 20 }}>
+              {SUGGESTIONS.map((q) => (
+                <button key={q} className="chip" onClick={() => send(q)}>{q}</button>
+              ))}
+            </div>
+          </>
+        ) : (
           <div style={{ maxHeight: '54vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8 }}>
             {messages.map((m, i) => (
               <ChatRow key={i} role={m.role} text={m.text} />
@@ -109,21 +147,7 @@ export default function Advisor() {
             )}
             <div ref={bottomRef} />
           </div>
-
-          {!hasConversation && !busy && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '4px 4px 16px' }}>
-              {SUGGESTIONS.map((q) => (
-                <button
-                  key={q}
-                  className="chip"
-                  onClick={() => send(q)}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
         <div style={{ flexShrink: 0 }}>
           <div
@@ -140,7 +164,7 @@ export default function Advisor() {
             <textarea
               ref={textareaRef}
               rows={1}
-              placeholder="Ask your advisor…"
+              placeholder="Ask anything about your money, or tell me about a transaction…"
               value={input}
               onChange={(e) => { setInput(e.target.value); autoGrow(e.target); }}
               onKeyDown={(e) => {

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 from anthropic import Anthropic
 
-from .models import db, User, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount
+from .models import db, User, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount, SipPlan, RecurringDeposit
 from .tax_engine import compare_regimes
 
 MODEL = os.environ.get('ANTHROPIC_MODEL', 'claude-sonnet-5')
@@ -84,17 +84,29 @@ def _run_tool_loop(system_prompt, tools, tool_executors, user_content, max_turns
 # Advisor agent
 # ---------------------------------------------------------------------------
 
-ADVISOR_SYSTEM_PROMPT = """You are a careful, plain-spoken personal financial advisor for an \
-individual managing their finances in INR (Indian Rupees). You have two tools:
+ADVISOR_SYSTEM_PROMPT_TEMPLATE = """You are a careful, plain-spoken personal financial advisor for an \
+individual managing their finances in INR (Indian Rupees). You have three tools:
 
-1. get_financial_snapshot — the person's budget, spend, savings rate, recurring bills \
-(including any loan EMIs with their interest rate and outstanding balance), investment \
-holdings, goals, and risk profile (conservative / moderate / aggressive).
+1. get_financial_snapshot — the person's ENTIRE financial picture: budget (overall and \
+per-category spend this month), every bank balance by name, recurring bills (incl. loan \
+EMIs with interest rates), all SIPs and recurring deposits, investment holdings, goals \
+(with target dates where set), risk profile, and a full tax summary (regime comparison, \
+TDS vs. liability) — the same computation the Tax page uses.
 2. get_surplus_projection — a run-rate projection of this month's likely surplus, based \
-on spend-to-date and days remaining in the month. Call this specifically when asked \
-about surplus, how much is safe to invest right now, or mid-month "how am I doing".
+on spend-to-date and days remaining in the month. Call this when asked about surplus, \
+how much is safe to invest right now, or mid-month "how am I doing".
+3. create_transaction — logs an actual expense or income the person describes to you in \
+conversation, e.g. "add food cost 480 california burrito" or "salary credited 150000". \
+Extract type ("expense"/"income"), amount, the best-fit category from exactly this list \
+(their own budget categories — never invent new ones): {categories}, and a short note. \
+Known recurring bills with fixed amounts (use automatically if named, even with no \
+amount given): {recurring_bills}. If the message is too ambiguous to extract confidently, \
+ask a clarifying question instead of guessing.
 
-Always call the relevant tool before answering — never guess or assume numbers.
+Always call get_financial_snapshot before answering any question about their finances — \
+never guess or assume numbers. Reference specific figures from what the tools return \
+(exact bank names and balances, exact categories, the real tax numbers), not vague \
+generalities — that's what makes you actually useful versus a generic answer.
 
 When asked where to invest a surplus, reason using their risk profile and current \
 allocation from the snapshot: a conservative profile should be weighted toward debt \
@@ -110,22 +122,41 @@ what their investments are realistically earning, and usually worse when it's lo
 (e.g. a 7-8% home loan vs. equity SIPs historically averaging more) — reason explicitly \
 using the actual interest rate and outstanding balance, never a generic rule of thumb.
 
-Give specific, actionable advice grounded in what the tools return. Keep answers concise \
-(a few short paragraphs or a short list, not an essay). If the question is outside \
-personal finance, say so briefly and redirect."""
+When asked about tax, use the taxSummary from get_financial_snapshot — it already \
+contains the regime comparison and TDS/advance-tax reconciliation, computed the same way \
+the Tax page shows it. Don't recompute or estimate tax yourself.
+
+Critical: never say a transaction was "added," "logged," or "saved" unless you actually \
+called create_transaction in this same turn. Give specific, actionable advice grounded \
+in what the tools return. Keep answers concise (a few short paragraphs or a short list, \
+not an essay). If the question is outside personal finance, say so briefly and redirect."""
 
 
-def _advisor_tools():
+def _advisor_tools(categories):
     return [
         {
             'name': 'get_financial_snapshot',
-            'description': "Fetch the user's budget, spend, savings rate, recurring bills (incl. loan EMIs with rates), investments, goals, and risk profile.",
+            'description': "Fetch the user's ENTIRE financial picture: budget, bank balances by name, recurring bills, SIPs/RDs, investments, goals, risk profile, and tax summary.",
             'input_schema': {'type': 'object', 'properties': {}},
         },
         {
             'name': 'get_surplus_projection',
             'description': "Project this month's likely surplus based on spend-to-date and days remaining.",
             'input_schema': {'type': 'object', 'properties': {}},
+        },
+        {
+            'name': 'create_transaction',
+            'description': 'Record a transaction (expense or income) the user described in conversation.',
+            'input_schema': {
+                'type': 'object',
+                'properties': {
+                    'type': {'type': 'string', 'enum': ['expense', 'income']},
+                    'amount': {'type': 'number'},
+                    'category': {'type': 'string', 'enum': categories},
+                    'note': {'type': 'string'},
+                },
+                'required': ['type', 'amount', 'category'],
+            },
         },
     ]
 
@@ -137,6 +168,9 @@ def _build_snapshot_executor(user_id):
         holdings = InvestmentHolding.query.filter_by(user_id=user_id).all()
         recurring = RecurringExpense.query.filter_by(user_id=user_id).all()
         bank_accounts = BankAccount.query.filter_by(user_id=user_id).all()
+        budgets = Budget.query.filter_by(user_id=user_id).all()
+        sip_plans = SipPlan.query.filter_by(user_id=user_id).all()
+        recurring_deposits = RecurringDeposit.query.filter_by(user_id=user_id).all()
 
         now = datetime.now(timezone.utc)
         this_month_tx = Transaction.query.filter_by(user_id=user_id).filter(
@@ -145,6 +179,20 @@ def _build_snapshot_executor(user_id):
         ).all()
         spent = sum(t.amount for t in this_month_tx if t.type == 'expense')
         income_this_month = sum(t.amount for t in this_month_tx if t.type == 'income')
+
+        spend_by_category = {}
+        for t in this_month_tx:
+            if t.type == 'expense':
+                spend_by_category[t.category] = spend_by_category.get(t.category, 0) + t.amount
+
+        budget_breakdown = [
+            {
+                'category': b.category,
+                'limit': b.limit,
+                'spentThisMonth': spend_by_category.get(b.category, 0),
+            }
+            for b in budgets
+        ]
 
         total_bank_balance = sum(b.balance for b in bank_accounts)
         sip_log = SipLog.query.filter_by(user_id=user_id, month_key=_month_key()).first()
@@ -155,13 +203,32 @@ def _build_snapshot_executor(user_id):
             holdings_by_category[h.category] = holdings_by_category.get(h.category, 0) + h.value
         total_investments = sum(h.value for h in holdings)
 
+        goal_by_id = {g.id: g for g in goals}
+        sip_plans_out = []
+        for p in sip_plans:
+            linked_goal = goal_by_id.get(p.goal_id)
+            sip_plans_out.append({
+                'name': p.name, 'amount': p.amount,
+                'linkedGoal': linked_goal.name if linked_goal else None,
+            })
+
+        # Reuse the same tax computation the Auditor uses, so the advisor's
+        # tax awareness stays consistent with the Tax page rather than a
+        # separate, possibly-drifting summary.
+        try:
+            tax_summary = _build_tax_computation_executor(user_id)({})
+        except Exception:
+            tax_summary = None
+
         return {
             'riskProfile': user.risk_profile or 'moderate',
-            'bankBalance': total_bank_balance,
+            'bankAccounts': [{'bank': b.bank_name, 'balance': b.balance} for b in bank_accounts],
+            'totalBankBalance': total_bank_balance,
             'monthlyIncome': user.monthly_income,
             'monthlyBudget': user.monthly_budget,
             'spentThisMonth': spent,
             'incomeThisMonth': income_this_month,
+            'budgetByCategory': budget_breakdown,
             'recurringBills': [
                 {
                     'name': r.name, 'category': r.category, 'amount': r.amount,
@@ -172,10 +239,19 @@ def _build_snapshot_executor(user_id):
             'totalRecurringBills': total_recurring,
             'sipMonthly': user.sip_monthly,
             'sipPaidThisMonth': bool(sip_log and sip_log.paid),
+            'additionalSipPlans': sip_plans_out,
+            'recurringDeposits': [{'name': r.name, 'bank': r.bank_name, 'amount': r.amount} for r in recurring_deposits],
             'totalInvestments': total_investments,
             'investmentAllocationByCategory': holdings_by_category,
             'estimatedMonthlySurplus': user.monthly_income - user.monthly_budget - total_recurring - user.sip_monthly,
-            'goals': [{'name': g.name, 'target': g.target, 'current': g.current} for g in goals],
+            'goals': [
+                {
+                    'name': g.name, 'target': g.target, 'current': g.current,
+                    'targetDate': g.target_date.isoformat() if g.target_date else None,
+                }
+                for g in goals
+            ],
+            'taxSummary': tax_summary,
         }
     return executor
 
@@ -218,12 +294,40 @@ def _build_surplus_projection_executor(user_id):
 
 
 def run_advisor(user_id, question):
-    tools = _advisor_tools()
+    categories = [b.category for b in Budget.query.filter_by(user_id=user_id).all()] or ['Other']
+    if 'Income' not in categories:
+        categories = categories + ['Income']
+
+    bills = RecurringExpense.query.filter_by(user_id=user_id).all()
+    recurring_bills_desc = (
+        '; '.join(f'"{b.name}" ({b.category}) = ₹{b.amount:g}' for b in bills)
+        if bills else '(none set up yet)'
+    )
+
+    system_prompt = ADVISOR_SYSTEM_PROMPT_TEMPLATE.format(
+        categories=', '.join(f'"{c}"' for c in categories),
+        recurring_bills=recurring_bills_desc,
+    )
+    tools = _advisor_tools(categories)
+
+    outcome = {}
+
+    def tracked_create_transaction(input_data):
+        result = _build_create_transaction_executor(user_id)(input_data)
+        outcome.update(result)
+        return result
+
     executors = {
         'get_financial_snapshot': _build_snapshot_executor(user_id),
         'get_surplus_projection': _build_surplus_projection_executor(user_id),
+        'create_transaction': tracked_create_transaction,
     }
-    return _run_tool_loop(ADVISOR_SYSTEM_PROMPT, tools, executors, question)
+    reply = _run_tool_loop(system_prompt, tools, executors, question)
+    return {
+        'reply': reply,
+        'created': bool(outcome.get('created')),
+        'transaction': outcome.get('transaction'),
+    }
 
 
 # ---------------------------------------------------------------------------

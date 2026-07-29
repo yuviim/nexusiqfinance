@@ -23,10 +23,10 @@ def advisor():
     if not question:
         return jsonify({'error': 'message is required'}), 400
     try:
-        reply = agents.run_advisor(_current_user_id(), question)
+        result = agents.run_advisor(_current_user_id(), question)
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 503
-    return jsonify({'reply': reply})
+    return jsonify(result)
 
 
 @agents_bp.post('/tracker')
