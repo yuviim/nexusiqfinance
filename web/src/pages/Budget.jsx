@@ -63,12 +63,12 @@ export default function Budget() {
         <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 10 }}>
           <span style={{ fontWeight: 700, fontSize: 24 }}>{formatINR(derived.spentThisMonth)}</span>
           <span style={{ color: 'var(--text-secondary)', fontSize: 14, marginLeft: 6 }}>
-            of {formatINR(totalBudgeted)} budgeted across categories
+            of {formatINR(totalCommitted)} budgeted (categories + recurring bills)
           </span>
         </div>
         <ProgressBar
-          pct={totalBudgeted ? derived.spentThisMonth / totalBudgeted : 0}
-          accent={derived.spentThisMonth > totalBudgeted ? 'rose' : 'teal'}
+          pct={totalCommitted ? derived.spentThisMonth / totalCommitted : 0}
+          accent={derived.spentThisMonth > totalCommitted ? 'rose' : 'teal'}
         />
       </Card>
 

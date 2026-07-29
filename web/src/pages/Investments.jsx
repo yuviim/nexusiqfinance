@@ -186,6 +186,8 @@ export default function Investments() {
         )}
         {data.goals.map((g) => {
           const pct = g.target ? g.current / g.target : 0;
+          const linkedSipTotal = data.sipPlans.filter((p) => p.goalId === g.id).reduce((s, p) => s + p.amount, 0);
+          const pace = computeGoalPace(g, linkedSipTotal);
           return (
             <Card key={g.id}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -193,9 +195,18 @@ export default function Investments() {
                 <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-secondary)' }}>{Math.round(pct * 100)}%</span>
               </div>
               <ProgressBar pct={pct} accent={g.color} height={10} />
-              <div style={{ fontSize: 13, marginTop: 8 }}>
-                {formatINR(g.current)} <span style={{ color: 'var(--text-secondary)' }}>of {formatINR(g.target)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <div style={{ fontSize: 13 }}>
+                  {formatINR(g.current)} <span style={{ color: 'var(--text-secondary)' }}>of {formatINR(g.target)}</span>
+                  {g.targetDate && (
+                    <span style={{ color: 'var(--text-secondary)' }}> · by {new Date(g.targetDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</span>
+                  )}
+                </div>
+                {pace && <Pill tone={pace.tone}>{pace.label}</Pill>}
               </div>
+              {pace?.detail && (
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>{pace.detail}</p>
+              )}
             </Card>
           );
         })}
@@ -209,6 +220,31 @@ export default function Investments() {
       )}
     </div>
   );
+}
+
+function computeGoalPace(goal, linkedSipTotal) {
+  const remaining = Math.max(0, goal.target - goal.current);
+  if (remaining <= 0) return { tone: 'good', label: 'Achieved' };
+  if (!goal.targetDate) {
+    return linkedSipTotal > 0
+      ? { tone: 'neutral', label: `${formatINR(linkedSipTotal)}/mo linked` }
+      : { tone: 'neutral', label: 'No target date', detail: 'Add a target date to see whether your linked SIP is on pace.' };
+  }
+  const now = new Date();
+  const target = new Date(goal.targetDate);
+  const monthsRemaining = Math.max(1, (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth()));
+  const requiredMonthly = remaining / monthsRemaining;
+
+  if (target < now) {
+    return { tone: 'alert', label: 'Overdue', detail: `Target date has passed with ${formatINR(remaining)} still to go.` };
+  }
+  if (linkedSipTotal <= 0) {
+    return { tone: 'warn', label: 'No SIP linked', detail: `You'd need ${formatINR(requiredMonthly)}/mo to hit this on time — link a SIP above.` };
+  }
+  if (linkedSipTotal >= requiredMonthly) {
+    return { tone: 'good', label: 'On track', detail: `${formatINR(linkedSipTotal)}/mo linked, ${formatINR(requiredMonthly)}/mo needed.` };
+  }
+  return { tone: 'warn', label: 'Behind pace', detail: `${formatINR(linkedSipTotal)}/mo linked, but ${formatINR(requiredMonthly)}/mo needed to hit this on time.` };
 }
 
 function SipCard({ amount, paid, onSave, onMarkDone }) {
@@ -374,6 +410,7 @@ function NewGoalModal({ onClose, onSubmit }) {
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
   const [current, setCurrent] = useState('');
+  const [targetDate, setTargetDate] = useState('');
   const [color, setColor] = useState('teal');
 
   return (
@@ -383,6 +420,12 @@ function NewGoalModal({ onClose, onSubmit }) {
         <input type="text" placeholder="Goal name" value={name} onChange={(e) => setName(e.target.value)} />
         <input type="number" placeholder="Target amount" value={target} onChange={(e) => setTarget(e.target.value)} />
         <input type="number" placeholder="Current amount saved" value={current} onChange={(e) => setCurrent(e.target.value)} />
+        <div>
+          <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
+            Target date (optional — enables on-track/behind tracking)
+          </label>
+          <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+        </div>
         <div style={{ display: 'flex', gap: 10 }}>
           {GOAL_ACCENTS.map((c) => (
             <button
@@ -403,7 +446,7 @@ function NewGoalModal({ onClose, onSubmit }) {
             onClick={() => {
               const t = parseFloat(target);
               if (!name.trim() || !t) return;
-              onSubmit({ name: name.trim(), target: t, current: parseFloat(current) || 0, color });
+              onSubmit({ name: name.trim(), target: t, current: parseFloat(current) || 0, targetDate: targetDate || null, color });
             }}
           >
             Save

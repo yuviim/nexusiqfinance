@@ -240,12 +240,20 @@ def add_goal():
     if not name or target <= 0:
         return jsonify({'error': 'name and a positive target are required'}), 400
 
+    target_date = None
+    if payload.get('targetDate'):
+        try:
+            target_date = datetime.fromisoformat(payload['targetDate']).date()
+        except ValueError:
+            return jsonify({'error': 'targetDate must be an ISO date string (YYYY-MM-DD)'}), 400
+
     goal = Goal(
         user_id=user.id,
         name=name,
         target=target,
         current=float(payload.get('current') or 0),
         color=payload.get('color') or 'teal',
+        target_date=target_date,
     )
     db.session.add(goal)
     db.session.commit()
@@ -269,6 +277,14 @@ def update_goal(goal_id):
                 setattr(goal, field, float(payload[field]))
             except (TypeError, ValueError):
                 return jsonify({'error': f'{field} must be a number'}), 400
+    if 'targetDate' in payload:
+        if payload['targetDate']:
+            try:
+                goal.target_date = datetime.fromisoformat(payload['targetDate']).date()
+            except ValueError:
+                return jsonify({'error': 'targetDate must be an ISO date string (YYYY-MM-DD)'}), 400
+        else:
+            goal.target_date = None
     db.session.commit()
     return jsonify(goal.to_dict())
 

@@ -45,6 +45,22 @@ function greeting() {
   return 'Good evening';
 }
 
+function SurplusRow({ label, value, bold }) {
+  const isNegative = value < 0;
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <span style={{ fontSize: bold ? 15 : 13, fontWeight: bold ? 700 : 500, color: bold ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{label}</span>
+      <span style={{
+        fontSize: bold ? 17 : 13,
+        fontWeight: bold ? 700 : 600,
+        color: bold ? (value < 0 ? 'var(--rose)' : 'var(--teal)') : (isNegative ? 'var(--text-primary)' : 'var(--text-primary)'),
+      }}>
+        {formatINR(value)}
+      </span>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { data } = useWealth();
   const salaryDay = Math.min(31, Math.max(1, data.profile.salaryDay || 1));
@@ -111,6 +127,17 @@ export default function Dashboard() {
   const cycleLabel = formatCycleLabel(start, nextStart);
   const prevCycleLabel = formatCycleLabel(prevStart, prevNextStart);
 
+  const categoryBudgetTotal = data.budgets.reduce((s, b) => s + b.limit, 0);
+  const recurringBillsTotal = data.recurringExpenses.reduce((s, r) => s + r.amount, 0);
+  const monthlyIncome = data.profile.monthlyIncome || 0;
+  const surplus = monthlyIncome - categoryBudgetTotal - recurringBillsTotal;
+
+  const committedToGoals =
+    (data.investments.sipMonthly || 0) +
+    data.sipPlans.reduce((s, p) => s + p.amount, 0) +
+    data.recurringDeposits.reduce((s, r) => s + r.amount, 0);
+  const unallocated = surplus - committedToGoals;
+
   return (
     <div className="stack">
       <div className="page-header-row">
@@ -128,6 +155,39 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      <Card style={{ borderColor: surplus < 0 ? 'var(--rose)' : unallocated > 0 ? 'var(--amber)' : 'var(--hairline)' }}>
+        <SectionLabel>Monthly surplus (income − budget − recurring bills)</SectionLabel>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+          <SurplusRow label="Monthly income" value={monthlyIncome} />
+          <SurplusRow label="− Budget categories" value={-categoryBudgetTotal} />
+          <SurplusRow label="− Recurring bills" value={-recurringBillsTotal} />
+          <div style={{ borderTop: '1px solid var(--hairline)', paddingTop: 6, marginTop: 2 }}>
+            <SurplusRow label="= Surplus" value={surplus} bold />
+          </div>
+        </div>
+
+        {surplus < 0 ? (
+          <Pill tone="alert">You're committing {formatINR(Math.abs(surplus))} more than you earn — budget or recurring bills need trimming.</Pill>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Already going to SIPs / RDs</span>
+              <span style={{ fontWeight: 600 }}>{formatINR(committedToGoals)}</span>
+            </div>
+            {unallocated > 0 ? (
+              <Pill tone="warn">{formatINR(unallocated)} of your surplus isn't assigned to a goal yet — add a SIP or RD on the Investments page.</Pill>
+            ) : (
+              <Pill tone="good">Your whole surplus is allocated to goals.</Pill>
+            )}
+          </>
+        )}
+        {!monthlyIncome && (
+          <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>
+            Set your monthly income on the You page to see this calculated.
+          </p>
+        )}
+      </Card>
 
       <div className="row">
         <Card>

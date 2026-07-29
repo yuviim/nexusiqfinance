@@ -148,6 +148,7 @@ class Goal(db.Model):
     target = db.Column(db.Float, nullable=False, default=0)
     current = db.Column(db.Float, nullable=False, default=0)
     color = db.Column(db.String(20), default='teal')
+    target_date = db.Column(db.Date, nullable=True)  # optional — enables on-track/behind pace tracking
 
     def to_dict(self):
         return {
@@ -156,6 +157,7 @@ class Goal(db.Model):
             'target': self.target,
             'current': self.current,
             'color': self.color,
+            'targetDate': self.target_date.isoformat() if self.target_date else None,
         }
 
 
