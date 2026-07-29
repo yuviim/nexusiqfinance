@@ -4,8 +4,11 @@ from datetime import timedelta
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from flask_migrate import Migrate
 
 from .models import db, SessionInvalid
+
+migrate = Migrate()
 
 
 def create_app():
@@ -22,6 +25,7 @@ def create_app():
 
     CORS(app)
     db.init_app(app)
+    migrate.init_app(app, db)
     JWTManager(app)
 
     from .auth import auth_bp
@@ -40,8 +44,5 @@ def create_app():
     @app.errorhandler(SessionInvalid)
     def handle_session_invalid(e):
         return jsonify({'error': e.description}), 401
-
-    with app.app_context():
-        db.create_all()
 
     return app

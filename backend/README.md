@@ -34,6 +34,37 @@ Put `http://<that-ip>:5050` into `src/config.js` in the WealthOS app. Your phone
 and computer need to be on the same network. This is the fastest way to test
 real sync while developing, but it stops working the moment you leave that Wi-Fi.
 
+## Database migrations
+
+Schema changes (new columns, new tables) are managed with Alembic via Flask-Migrate,
+not automatic table creation — this avoids the failure mode where a new field
+silently breaks every request because the live database was never told about it.
+
+**When you add/change a model field:**
+```
+export FLASK_APP=run.py
+flask db migrate -m "short description of the change"
+flask db upgrade
+```
+The first command generates a migration file in `migrations/versions/` by diffing
+your models against the current database — review it before running upgrade,
+since autogenerate isn't perfect (it won't detect some column renames, for example).
+The second actually applies it to whatever database `DATABASE_URL` (or the local
+SQLite default) currently points to.
+
+**Commit the generated migration file** along with your model changes — it needs
+to travel with the code, the same as any other source file.
+
+**On Render**, after pushing a change that includes a new migration, run the
+upgrade against production once via the **Shell** tab (left sidebar on your
+service):
+```
+flask db upgrade
+```
+This applies pending migrations to whatever `DATABASE_URL` is set to in that
+environment (Neon, or wherever your production database lives) without a full
+redeploy. Do this once per new migration, not on every deploy.
+
 ## Deploy it for real (Render.com, free tier)
 
 This gets you a permanent `https://` URL that works from anywhere, not just your
