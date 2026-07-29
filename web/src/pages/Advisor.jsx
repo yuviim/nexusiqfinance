@@ -92,43 +92,47 @@ export default function Advisor() {
       <div style={{ maxWidth: 760, margin: '0 auto', width: '100%' }}>
         {!hasConversation ? (
           <>
-            <div style={{ textAlign: 'center', padding: '24px 0 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
               <div style={{
-                width: 64, height: 64, borderRadius: 18, background: 'var(--accent-gradient)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px',
-                boxShadow: '0 8px 24px -8px rgba(59,130,246,0.4)',
+                width: 44, height: 44, borderRadius: 13, background: 'var(--accent-gradient)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                boxShadow: '0 6px 16px -6px rgba(59,130,246,0.4)',
               }}>
-                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                   <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" fill="white" />
                 </svg>
               </div>
-              <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 6px' }}>{greeting()}, {data.profile.name}</h2>
-              <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>{WELCOME}</p>
+              <div>
+                <h2 style={{ fontSize: 19, fontWeight: 700, margin: 0 }}>{greeting()}, {data.profile.name}</h2>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '2px 0 0' }}>{WELCOME}</p>
+              </div>
             </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginBottom: 20 }}>
-              <span style={{ fontSize: 12, color: 'var(--text-faint)', fontWeight: 600, marginRight: 2 }}>CONNECTED:</span>
-              {CONNECTED.map((c) => <span key={c} className="chip chip--active" style={{ cursor: 'default' }}>{c}</span>)}
-            </div>
+            <div className="card" style={{ padding: 28 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 24 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-faint)', fontWeight: 700, letterSpacing: 0.5 }}>CONNECTED</span>
+                {CONNECTED.map((c) => <span key={c} className="chip chip--active" style={{ cursor: 'default' }}>{c}</span>)}
+              </div>
 
-            <div className="row" style={{ marginBottom: 16 }}>
-              {ACTION_CARDS.map((card) => (
-                <div
-                  key={card.key}
-                  className="card"
-                  style={{ cursor: 'pointer', textAlign: 'center', padding: '18px 12px' }}
-                  onClick={() => send(card.question)}
-                >
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{card.label}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>{card.sub}</div>
-                </div>
-              ))}
-            </div>
+              <div className="row" style={{ marginBottom: 24 }}>
+                {ACTION_CARDS.map((card) => (
+                  <div
+                    key={card.key}
+                    className="card"
+                    style={{ cursor: 'pointer', textAlign: 'center', padding: '20px 14px', background: 'var(--bg-elevated-2)' }}
+                    onClick={() => send(card.question)}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{card.label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>{card.sub}</div>
+                  </div>
+                ))}
+              </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 20 }}>
-              {SUGGESTIONS.map((q) => (
-                <button key={q} className="chip" onClick={() => send(q)}>{q}</button>
-              ))}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {SUGGESTIONS.map((q) => (
+                  <button key={q} className="chip" onClick={() => send(q)}>{q}</button>
+                ))}
+              </div>
             </div>
           </>
         ) : (
@@ -149,7 +153,7 @@ export default function Advisor() {
           </div>
         )}
 
-        <div style={{ flexShrink: 0 }}>
+        <div style={{ flexShrink: 0, marginTop: hasConversation ? 0 : 20 }}>
           <div
             style={{
               display: 'flex',
