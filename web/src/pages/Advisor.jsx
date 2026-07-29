@@ -166,7 +166,16 @@ export default function Advisor() {
   ];
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 260px', gap: 20, height: 'calc(100vh - 160px)' }}>
+    <div style={{
+      marginLeft: 'calc(50% - 50vw)',
+      marginRight: 'calc(50% - 50vw)',
+      paddingLeft: 40,
+      paddingRight: 40,
+      display: 'grid',
+      gridTemplateColumns: '240px 1fr 300px',
+      gap: 28,
+      height: 'calc(100vh - 160px)',
+    }}>
 
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <button className="btn btn--teal" style={{ marginBottom: 16 }} onClick={newChat} disabled={busy}>+ New chat</button>
@@ -209,7 +218,7 @@ export default function Advisor() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, maxWidth: 820, width: '100%', margin: '0 auto' }}>
         <div style={{
           flex: 1,
           overflowY: 'auto',
