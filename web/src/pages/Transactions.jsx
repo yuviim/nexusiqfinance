@@ -7,9 +7,10 @@ import { formatINR } from '../format';
 import { BANK_NAMES } from './BankAccounts';
 
 export default function Transactions() {
-  const { data, addTransaction, deleteTransaction, addBudget, refresh } = useWealth();
+  const { data, addTransaction, updateTransaction, deleteTransaction, addBudget, refresh } = useWealth();
   const { token } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingTx, setEditingTx] = useState(null);
   const [quickText, setQuickText] = useState('');
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickReply, setQuickReply] = useState(null);
@@ -47,7 +48,7 @@ export default function Transactions() {
     <div className="stack">
       <div className="page-header-row">
         <h1 className="page-title" style={{ margin: 0 }}>Transactions</h1>
-        <button className="btn btn--teal btn--pill" onClick={() => setModalOpen(true)}>+ Add manually</button>
+        <button className="btn btn--teal btn--pill" onClick={() => { setEditingTx(null); setModalOpen(true); }}>+ Add manually</button>
       </div>
 
       <Card>
@@ -84,13 +85,7 @@ export default function Transactions() {
               {txs.map((t, idx) => (
                 <div key={t.id}>
                   {idx > 0 && <Divider />}
-                  <div
-                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', cursor: 'pointer' }}
-                    title="Click to delete"
-                    onClick={() => {
-                      if (window.confirm(`Delete "${t.category}" — ${formatINR(t.amount)}?`)) deleteTransaction(t.id);
-                    }}
-                  >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{t.category}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
@@ -99,8 +94,28 @@ export default function Transactions() {
                         {!!t.note && <span>{t.note}</span>}
                       </div>
                     </div>
-                    <div style={{ fontWeight: 600, fontSize: 15, color: t.type === 'income' ? 'var(--teal)' : 'var(--rose)' }}>
-                      {t.type === 'income' ? '+' : '-'}{formatINR(t.amount)}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ fontWeight: 600, fontSize: 15, color: t.type === 'income' ? 'var(--teal)' : 'var(--rose)' }}>
+                        {t.type === 'income' ? '+' : '-'}{formatINR(t.amount)}
+                      </div>
+                      <button
+                        className="btn btn--ghost"
+                        style={{ padding: '6px 10px', fontSize: 12 }}
+                        title="Edit"
+                        onClick={() => { setEditingTx(t); setModalOpen(true); }}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        className="btn btn--ghost"
+                        style={{ padding: '6px 10px', fontSize: 12 }}
+                        title="Delete"
+                        onClick={() => {
+                          if (window.confirm(`Delete "${t.category}" — ${formatINR(t.amount)}?`)) deleteTransaction(t.id);
+                        }}
+                      >
+                        ✕
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -114,10 +129,16 @@ export default function Transactions() {
         <AddTransactionModal
           categories={categories}
           onAddCategory={addBudget}
-          onClose={() => setModalOpen(false)}
+          initial={editingTx}
+          onClose={() => { setModalOpen(false); setEditingTx(null); }}
           onSubmit={(tx) => {
-            addTransaction(tx);
+            if (editingTx) {
+              updateTransaction(editingTx.id, tx);
+            } else {
+              addTransaction(tx);
+            }
             setModalOpen(false);
+            setEditingTx(null);
           }}
         />
       )}
@@ -125,14 +146,15 @@ export default function Transactions() {
   );
 }
 
-function AddTransactionModal({ categories, onAddCategory, onClose, onSubmit }) {
+function AddTransactionModal({ categories, onAddCategory, initial, onClose, onSubmit }) {
   const todayStr = new Date().toISOString().slice(0, 10);
-  const [type, setType] = useState('expense');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState(categories[0]);
-  const [bank, setBank] = useState('HDFC');
-  const [date, setDate] = useState(todayStr);
-  const [note, setNote] = useState('');
+  const isEditing = !!initial;
+  const [type, setType] = useState(initial?.type || 'expense');
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
+  const [category, setCategory] = useState(initial?.category || categories[0]);
+  const [bank, setBank] = useState(initial?.bankName || 'HDFC');
+  const [date, setDate] = useState(initial ? new Date(initial.date).toISOString().slice(0, 10) : todayStr);
+  const [note, setNote] = useState(initial?.note || '');
 
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -151,7 +173,7 @@ function AddTransactionModal({ categories, onAddCategory, onClose, onSubmit }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 20 }}>New transaction</h2>
+        <h2 style={{ margin: '0 0 4px', fontSize: 20 }}>{isEditing ? 'Edit transaction' : 'New transaction'}</h2>
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -248,7 +270,7 @@ function AddTransactionModal({ categories, onAddCategory, onClose, onSubmit }) {
               });
             }}
           >
-            Save
+            {isEditing ? 'Save changes' : 'Save'}
           </button>
         </div>
       </div>

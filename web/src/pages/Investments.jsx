@@ -7,6 +7,7 @@ import { useWealth } from '../store/DataContext';
 import { useAuth } from '../store/AuthContext';
 import { api } from '../api/client';
 import { formatINR } from '../format';
+import { BANK_NAMES } from './BankAccounts';
 
 const ALLOCATION_COLORS = ['teal', 'violet', 'amber', 'rose', 'teal'];
 const HOLDING_CATEGORIES = ['Mutual Funds', 'Stocks', 'PPF', 'EPF', 'Gold', 'Other'];
@@ -19,7 +20,7 @@ const GOAL_ACCENTS = ['teal', 'amber', 'violet', 'rose'];
 const GOAL_ACCENT_VAR = { teal: 'var(--teal)', amber: 'var(--amber)', violet: 'var(--violet)', rose: 'var(--rose)' };
 
 export default function Investments() {
-  const { data, derived, markSip, addHolding, deleteHolding, addGoal, setProfile } = useWealth();
+  const { data, derived, markSip, addHolding, deleteHolding, addGoal, setProfile, addSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit } = useWealth();
   const { token } = useAuth();
   const holdings = data.investments.holdings;
   const total = derived.totalInvestments || 1;
@@ -129,6 +130,19 @@ export default function Investments() {
         onSave={(amt) => setProfile({ sipMonthly: amt })}
         onMarkDone={() => markSip(!derived.sipPaidThisMonth)}
       />
+
+      <SectionLabel style={{ marginLeft: 2 }}>Other SIPs</SectionLabel>
+      <Card>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-secondary)' }}>
+          Add as many SIPs as you like — each one can optionally be linked to a goal above.
+        </p>
+        <SipPlanList plans={data.sipPlans} goals={data.goals} onAdd={addSipPlan} onDelete={deleteSipPlan} />
+      </Card>
+
+      <SectionLabel style={{ marginLeft: 2 }}>Recurring deposits (RD)</SectionLabel>
+      <Card>
+        <RecurringDepositList deposits={data.recurringDeposits} onAdd={addRecurringDeposit} onDelete={deleteRecurringDeposit} />
+      </Card>
 
       <SectionLabel style={{ marginLeft: 2 }}>Holdings</SectionLabel>
       <Card>
@@ -249,6 +263,110 @@ function SipCard({ amount, paid, onSave, onMarkDone }) {
       </div>
       {!paid && !editing && <Pill tone="warn">SIP due this month</Pill>}
     </Card>
+  );
+}
+
+function SipPlanList({ plans, goals, onAdd, onDelete }) {
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [goalId, setGoalId] = useState('');
+
+  const create = async () => {
+    if (!name.trim() || !amount) return;
+    await onAdd({ name: name.trim(), amount: parseFloat(amount), goalId: goalId ? parseInt(goalId, 10) : null });
+    setName('');
+    setAmount('');
+    setGoalId('');
+  };
+
+  const goalName = (id) => goals.find((g) => g.id === id)?.name;
+
+  return (
+    <>
+      {plans.length === 0 && (
+        <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--text-secondary)' }}>No additional SIPs yet.</p>
+      )}
+      {plans.map((p, idx) => (
+        <div key={p.id}>
+          {idx > 0 && <Divider />}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
+              {!!p.goalId && goalName(p.goalId) && (
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>→ {goalName(p.goalId)}</div>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(p.amount)}</div>
+              <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onDelete(p.id)}>✕</button>
+            </div>
+          </div>
+        </div>
+      ))}
+      {plans.length > 0 && <Divider />}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input type="text" placeholder="SIP name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: '1 1 140px' }} />
+        <input type="number" placeholder="Monthly amount" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: '1 1 130px' }} />
+        <select
+          value={goalId}
+          onChange={(e) => setGoalId(e.target.value)}
+          style={{ background: 'var(--bg-elevated-2)', color: 'var(--text-primary)', border: '1px solid var(--hairline)', borderRadius: 'var(--radius-md)', padding: '0 10px' }}
+        >
+          <option value="">No linked goal</option>
+          {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
+        <button className="btn btn--teal" onClick={create}>Add</button>
+      </div>
+    </>
+  );
+}
+
+function RecurringDepositList({ deposits, onAdd, onDelete }) {
+  const [name, setName] = useState('');
+  const [bank, setBank] = useState(BANK_NAMES[0]);
+  const [amount, setAmount] = useState('');
+
+  const create = async () => {
+    if (!name.trim() || !amount) return;
+    await onAdd({ name: name.trim(), bankName: bank, amount: parseFloat(amount) });
+    setName('');
+    setAmount('');
+  };
+
+  return (
+    <>
+      {deposits.length === 0 && (
+        <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--text-secondary)' }}>No recurring deposits yet.</p>
+      )}
+      {deposits.map((rd, idx) => (
+        <div key={rd.id}>
+          {idx > 0 && <Divider />}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{rd.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{rd.bankName}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(rd.amount)}</div>
+              <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onDelete(rd.id)}>✕</button>
+            </div>
+          </div>
+        </div>
+      ))}
+      {deposits.length > 0 && <Divider />}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input type="text" placeholder="RD name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: '1 1 140px' }} />
+        <select
+          value={bank}
+          onChange={(e) => setBank(e.target.value)}
+          style={{ background: 'var(--bg-elevated-2)', color: 'var(--text-primary)', border: '1px solid var(--hairline)', borderRadius: 'var(--radius-md)', padding: '0 10px' }}
+        >
+          {BANK_NAMES.map((b) => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <input type="number" placeholder="Monthly amount" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: '1 1 130px' }} />
+        <button className="btn btn--teal" onClick={create}>Add</button>
+      </div>
+    </>
   );
 }
 

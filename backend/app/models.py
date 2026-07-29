@@ -171,6 +171,30 @@ class InvestmentHolding(db.Model):
         return {'id': self.id, 'category': self.category, 'name': self.name, 'value': self.value}
 
 
+class SipPlan(db.Model):
+    __tablename__ = 'sip_plans'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    amount = db.Column(db.Float, nullable=False, default=0)
+    goal_id = db.Column(db.Integer, db.ForeignKey('goals.id'), nullable=True)
+
+    def to_dict(self):
+        return {'id': self.id, 'name': self.name, 'amount': self.amount, 'goalId': self.goal_id}
+
+
+class RecurringDeposit(db.Model):
+    __tablename__ = 'recurring_deposits'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    bank_name = db.Column(db.String(40), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    amount = db.Column(db.Float, nullable=False, default=0)
+
+    def to_dict(self):
+        return {'id': self.id, 'bankName': self.bank_name, 'name': self.name, 'amount': self.amount}
+
+
 class SipLog(db.Model):
     __tablename__ = 'sip_log'
     id = db.Column(db.Integer, primary_key=True)

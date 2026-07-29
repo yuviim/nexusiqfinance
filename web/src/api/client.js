@@ -57,6 +57,7 @@ export const api = {
     request('/api/auth/login', { method: 'POST', body: { email, password } }),
   getState: (token) => request('/api/state', { token }),
   addTransaction: (token, tx) => request('/api/transactions', { method: 'POST', body: tx, token }),
+  updateTransaction: (token, id, patch) => request(`/api/transactions/${id}`, { method: 'PUT', body: patch, token }),
   deleteTransaction: (token, id) => request(`/api/transactions/${id}`, { method: 'DELETE', token }),
   updateBudget: (token, id, patch) => request(`/api/budgets/${id}`, { method: 'PUT', body: patch, token }),
   addBudget: (token, budget) => request('/api/budgets', { method: 'POST', body: budget, token }),
@@ -83,6 +84,16 @@ export const api = {
   addRecurring: (token, item) => request('/api/recurring', { method: 'POST', body: item, token }),
   updateRecurring: (token, id, patch) => request(`/api/recurring/${id}`, { method: 'PUT', body: patch, token }),
   deleteRecurring: (token, id) => request(`/api/recurring/${id}`, { method: 'DELETE', token }),
+
+  // SIP plans
+  addSipPlan: (token, plan) => request('/api/sip-plans', { method: 'POST', body: plan, token }),
+  updateSipPlan: (token, id, patch) => request(`/api/sip-plans/${id}`, { method: 'PUT', body: patch, token }),
+  deleteSipPlan: (token, id) => request(`/api/sip-plans/${id}`, { method: 'DELETE', token }),
+
+  // Recurring deposits (RDs)
+  addRecurringDeposit: (token, rd) => request('/api/recurring-deposits', { method: 'POST', body: rd, token }),
+  updateRecurringDeposit: (token, id, patch) => request(`/api/recurring-deposits/${id}`, { method: 'PUT', body: patch, token }),
+  deleteRecurringDeposit: (token, id) => request(`/api/recurring-deposits/${id}`, { method: 'DELETE', token }),
 
   // Bank accounts
   upsertBankAccount: (token, bankName, balance) =>

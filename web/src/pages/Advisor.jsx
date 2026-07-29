@@ -1,14 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Card, SectionLabel } from '../components/ui';
 import '../components/markdown.css';
 import { useAuth } from '../store/AuthContext';
+import { useWealth } from '../store/DataContext';
 import { api } from '../api/client';
+import { formatINR } from '../format';
 
 const WELCOME = "I'm your financial advisor agent. Ask me anything about your budget, savings rate, surplus, or where to invest — I'll pull your current numbers before answering.";
 
+const SUGGESTIONS = [
+  'Where should I invest my surplus?',
+  'Am I saving enough this month?',
+  'Should I pay off a loan faster or invest?',
+  'How am I doing on my goals?',
+];
+
 export default function Advisor() {
   const { token } = useAuth();
+  const { derived } = useWealth();
   const [messages, setMessages] = useState([{ role: 'assistant', text: WELCOME }]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -16,6 +27,8 @@ export default function Advisor() {
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
   const isFirstRender = useRef(true);
+
+  const hasConversation = messages.length > 1;
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -31,8 +44,8 @@ export default function Advisor() {
     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
   };
 
-  const send = async () => {
-    const question = input.trim();
+  const send = async (overrideText) => {
+    const question = (overrideText ?? input).trim();
     if (!question || busy) return;
     setMessages((m) => [...m, { role: 'user', text: question }]);
     setInput('');
@@ -62,30 +75,54 @@ export default function Advisor() {
         <button className="btn btn--ghost" onClick={newChat} disabled={busy}>New chat</button>
       </div>
 
-      <div
-        style={{
-          maxWidth: 760,
-          margin: '0 auto',
-          width: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          minHeight: 'calc(100vh - 230px)',
-        }}
-      >
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8 }}>
-          {messages.map((m, i) => (
-            <ChatRow key={i} role={m.role} text={m.text} />
-          ))}
-          {busy && <ThinkingRow />}
-          {!!error && (
-            <div style={{ display: 'flex', gap: 12, padding: '14px 4px' }}>
-              <Avatar role="assistant" />
-              <div style={{ flex: 1, paddingTop: 4 }}>
-                <p style={{ margin: 0, color: 'var(--rose)', fontSize: 14 }}>{error}</p>
+      <div style={{ maxWidth: 760, margin: '0 auto', width: '100%' }}>
+        <div className="row" style={{ marginBottom: 16 }}>
+          <Card>
+            <SectionLabel>Savings rate</SectionLabel>
+            <div style={{ fontWeight: 700, fontSize: 22 }}>{derived.savingsRate}%</div>
+          </Card>
+          <Card>
+            <SectionLabel>Financial health</SectionLabel>
+            <div style={{ fontWeight: 700, fontSize: 22 }}>
+              {derived.financialHealthScore}<span style={{ fontWeight: 500, fontSize: 13, color: 'var(--text-secondary)' }}> /100</span>
+            </div>
+          </Card>
+          <Card>
+            <SectionLabel>Spent this month</SectionLabel>
+            <div style={{ fontWeight: 700, fontSize: 22 }}>{formatINR(derived.spentThisMonth)}</div>
+          </Card>
+        </div>
+
+        <div>
+          <div style={{ maxHeight: '54vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8 }}>
+            {messages.map((m, i) => (
+              <ChatRow key={i} role={m.role} text={m.text} />
+            ))}
+            {busy && <ThinkingRow />}
+            {!!error && (
+              <div style={{ display: 'flex', gap: 12, padding: '14px 4px' }}>
+                <Avatar role="assistant" />
+                <div style={{ flex: 1, paddingTop: 4 }}>
+                  <p style={{ margin: 0, color: 'var(--rose)', fontSize: 14 }}>{error}</p>
+                </div>
               </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          {!hasConversation && !busy && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '4px 4px 16px' }}>
+              {SUGGESTIONS.map((q) => (
+                <button
+                  key={q}
+                  className="chip"
+                  onClick={() => send(q)}
+                >
+                  {q}
+                </button>
+              ))}
             </div>
           )}
-          <div ref={bottomRef} />
         </div>
 
         <div style={{ flexShrink: 0 }}>
@@ -129,7 +166,7 @@ export default function Advisor() {
             <button
               className="btn btn--teal"
               style={{ borderRadius: '50%', width: 40, height: 40, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-              onClick={send}
+              onClick={() => send()}
               disabled={busy || !input.trim()}
               aria-label="Send"
             >

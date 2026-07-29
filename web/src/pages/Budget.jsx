@@ -3,7 +3,7 @@ import { Card, SectionLabel, ProgressBar, Pill, Divider } from '../components/ui
 import { useWealth } from '../store/DataContext';
 import { formatINR } from '../format';
 
-const RECURRING_CATEGORIES = ['Loan EMI', 'Insurance', 'Subscription', 'Utility', 'Other'];
+const RECURRING_CATEGORIES = ['Loan EMI', 'House Expense', 'Insurance', 'Subscription', 'Utility', 'Other'];
 
 export default function Budget() {
   const { data, derived, addBudget, deleteBudget, addRecurring, deleteRecurring, addTransaction } = useWealth();

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
-from .models import db, User, Asset, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount, BANK_NAMES, SessionInvalid
+from .models import db, User, Asset, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount, BANK_NAMES, SessionInvalid, SipPlan, RecurringDeposit
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -33,6 +33,8 @@ def get_state():
     sip_logs = SipLog.query.filter_by(user_id=user.id).all()
     recurring = RecurringExpense.query.filter_by(user_id=user.id).all()
     bank_accounts = BankAccount.query.filter_by(user_id=user.id).all()
+    sip_plans = SipPlan.query.filter_by(user_id=user.id).all()
+    recurring_deposits = RecurringDeposit.query.filter_by(user_id=user.id).all()
 
     return jsonify({
         'profile': {**user.to_profile_dict()},
@@ -48,10 +50,27 @@ def get_state():
         'sipLog': {s.month_key: s.paid for s in sip_logs},
         'recurringExpenses': [r.to_dict() for r in recurring],
         'bankAccounts': [b.to_dict() for b in bank_accounts],
+        'sipPlans': [s.to_dict() for s in sip_plans],
+        'recurringDeposits': [r.to_dict() for r in recurring_deposits],
     })
 
 
 # ---- Transactions ----
+
+def _adjust_bank_balance(user_id, bank_name, ttype, amount, reverse=False):
+    """Keep a bank's balance in sync with logged transactions tagged to it.
+    Income adds to the balance, expense subtracts. `reverse` undoes a
+    previously-applied effect (used when editing or deleting a transaction)."""
+    if not bank_name:
+        return
+    account = BankAccount.query.filter_by(user_id=user_id, bank_name=bank_name).first()
+    if not account:
+        return
+    delta = amount if ttype == 'income' else -amount
+    if reverse:
+        delta = -delta
+    account.balance = (account.balance or 0) + delta
+
 
 @api_bp.post('/transactions')
 @jwt_required()
@@ -81,18 +100,64 @@ def add_transaction():
         except ValueError:
             return jsonify({'error': 'date must be an ISO date/datetime string'}), 400
 
+    bank_name = payload.get('bankName') or ''
+
     tx = Transaction(
         user_id=user.id,
         type=ttype,
         amount=amount,
         category=category,
         note=payload.get('note') or '',
-        bank_name=payload.get('bankName') or '',
+        bank_name=bank_name,
         **({'date': tx_date} if tx_date else {}),
     )
     db.session.add(tx)
+    _adjust_bank_balance(user.id, bank_name, ttype, amount)
     db.session.commit()
     return jsonify(tx.to_dict()), 201
+
+
+@api_bp.put('/transactions/<int:tx_id>')
+@jwt_required()
+def update_transaction(tx_id):
+    user = current_user()
+    tx = Transaction.query.filter_by(id=tx_id, user_id=user.id).first()
+    if not tx:
+        return jsonify({'error': 'Transaction not found'}), 404
+    payload = request.get_json(silent=True) or {}
+
+    # Undo this transaction's effect on its old bank balance before changing anything.
+    _adjust_bank_balance(user.id, tx.bank_name, tx.type, tx.amount, reverse=True)
+
+    if 'type' in payload:
+        if payload['type'] not in ('expense', 'income'):
+            return jsonify({'error': 'type must be expense or income'}), 400
+        tx.type = payload['type']
+    if 'amount' in payload:
+        try:
+            new_amount = float(payload['amount'])
+        except (TypeError, ValueError):
+            return jsonify({'error': 'amount must be a number'}), 400
+        if new_amount <= 0:
+            return jsonify({'error': 'amount must be positive'}), 400
+        tx.amount = new_amount
+    if 'category' in payload:
+        tx.category = payload['category']
+    if 'note' in payload:
+        tx.note = payload['note']
+    if 'bankName' in payload:
+        tx.bank_name = payload['bankName'] or ''
+    if 'date' in payload and payload['date']:
+        try:
+            tx.date = datetime.fromisoformat(payload['date'])
+        except ValueError:
+            return jsonify({'error': 'date must be an ISO date/datetime string'}), 400
+
+    # Apply the (possibly changed) transaction's effect to its (possibly changed) bank.
+    _adjust_bank_balance(user.id, tx.bank_name, tx.type, tx.amount)
+
+    db.session.commit()
+    return jsonify(tx.to_dict())
 
 
 @api_bp.delete('/transactions/<int:tx_id>')
@@ -102,6 +167,7 @@ def delete_transaction(tx_id):
     tx = Transaction.query.filter_by(id=tx_id, user_id=user.id).first()
     if not tx:
         return jsonify({'error': 'Transaction not found'}), 404
+    _adjust_bank_balance(user.id, tx.bank_name, tx.type, tx.amount, reverse=True)
     db.session.delete(tx)
     db.session.commit()
     return jsonify({'ok': True})
@@ -438,6 +504,129 @@ def delete_recurring(item_id):
     return jsonify({'ok': True})
 
 
+# ---- SIP plans (multiple, each optionally linked to a goal) ----
+
+@api_bp.post('/sip-plans')
+@jwt_required()
+def add_sip_plan():
+    user = current_user()
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'name is required'}), 400
+    try:
+        amount = float(payload.get('amount', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'amount must be a number'}), 400
+    goal_id = payload.get('goalId') or None
+    if goal_id is not None:
+        goal = Goal.query.filter_by(id=goal_id, user_id=user.id).first()
+        if not goal:
+            return jsonify({'error': 'goalId does not match one of your goals'}), 400
+
+    plan = SipPlan(user_id=user.id, name=name, amount=amount, goal_id=goal_id)
+    db.session.add(plan)
+    db.session.commit()
+    return jsonify(plan.to_dict()), 201
+
+
+@api_bp.put('/sip-plans/<int:plan_id>')
+@jwt_required()
+def update_sip_plan(plan_id):
+    user = current_user()
+    plan = SipPlan.query.filter_by(id=plan_id, user_id=user.id).first()
+    if not plan:
+        return jsonify({'error': 'Not found'}), 404
+    payload = request.get_json(silent=True) or {}
+    if 'name' in payload:
+        plan.name = payload['name']
+    if 'amount' in payload:
+        try:
+            plan.amount = float(payload['amount'])
+        except (TypeError, ValueError):
+            return jsonify({'error': 'amount must be a number'}), 400
+    if 'goalId' in payload:
+        goal_id = payload['goalId'] or None
+        if goal_id is not None:
+            goal = Goal.query.filter_by(id=goal_id, user_id=user.id).first()
+            if not goal:
+                return jsonify({'error': 'goalId does not match one of your goals'}), 400
+        plan.goal_id = goal_id
+    db.session.commit()
+    return jsonify(plan.to_dict())
+
+
+@api_bp.delete('/sip-plans/<int:plan_id>')
+@jwt_required()
+def delete_sip_plan(plan_id):
+    user = current_user()
+    plan = SipPlan.query.filter_by(id=plan_id, user_id=user.id).first()
+    if not plan:
+        return jsonify({'error': 'Not found'}), 404
+    db.session.delete(plan)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+# ---- Recurring deposits (RDs), bank-linked ----
+
+@api_bp.post('/recurring-deposits')
+@jwt_required()
+def add_recurring_deposit():
+    user = current_user()
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get('name') or '').strip()
+    bank_name = payload.get('bankName')
+    if not name:
+        return jsonify({'error': 'name is required'}), 400
+    if bank_name not in BANK_NAMES:
+        return jsonify({'error': f'bankName must be one of {BANK_NAMES}'}), 400
+    try:
+        amount = float(payload.get('amount', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'amount must be a number'}), 400
+
+    rd = RecurringDeposit(user_id=user.id, name=name, bank_name=bank_name, amount=amount)
+    db.session.add(rd)
+    db.session.commit()
+    return jsonify(rd.to_dict()), 201
+
+
+@api_bp.put('/recurring-deposits/<int:rd_id>')
+@jwt_required()
+def update_recurring_deposit(rd_id):
+    user = current_user()
+    rd = RecurringDeposit.query.filter_by(id=rd_id, user_id=user.id).first()
+    if not rd:
+        return jsonify({'error': 'Not found'}), 404
+    payload = request.get_json(silent=True) or {}
+    if 'name' in payload:
+        rd.name = payload['name']
+    if 'bankName' in payload:
+        if payload['bankName'] not in BANK_NAMES:
+            return jsonify({'error': f'bankName must be one of {BANK_NAMES}'}), 400
+        rd.bank_name = payload['bankName']
+    if 'amount' in payload:
+        try:
+            rd.amount = float(payload['amount'])
+        except (TypeError, ValueError):
+            return jsonify({'error': 'amount must be a number'}), 400
+    db.session.commit()
+    return jsonify(rd.to_dict())
+
+
+@api_bp.delete('/recurring-deposits/<int:rd_id>')
+@jwt_required()
+def delete_recurring_deposit(rd_id):
+    user = current_user()
+    rd = RecurringDeposit.query.filter_by(id=rd_id, user_id=user.id).first()
+    if not rd:
+        return jsonify({'error': 'Not found'}), 404
+    db.session.delete(rd)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 # ---- Reset ----
 
 @api_bp.post('/reset-data')
@@ -451,6 +640,8 @@ def reset_data():
     Asset.query.filter_by(user_id=user.id).delete()
     InvestmentHolding.query.filter_by(user_id=user.id).delete()
     Transaction.query.filter_by(user_id=user.id).delete()
+    SipPlan.query.filter_by(user_id=user.id).delete()
+    RecurringDeposit.query.filter_by(user_id=user.id).delete()
     Goal.query.filter_by(user_id=user.id).delete()
     Budget.query.filter_by(user_id=user.id).delete()
     SipLog.query.filter_by(user_id=user.id).delete()

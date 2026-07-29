@@ -15,6 +15,8 @@ const emptyState = {
   sipLog: {},
   recurringExpenses: [],
   bankAccounts: [],
+  sipPlans: [],
+  recurringDeposits: [],
 };
 
 const monthKey = (d = new Date()) => `${d.getFullYear()}-${d.getMonth() + 1}`;
@@ -81,25 +83,37 @@ export function DataProvider({ children }) {
   const addTransaction = useCallback(
     async (tx) => {
       try {
-        const created = await api.addTransaction(token, tx);
-        persist({ ...data, transactions: [created, ...data.transactions] });
+        await api.addTransaction(token, tx);
+        await refresh();
       } catch (e) {
         setSyncError(e.message);
       }
     },
-    [token, data, persist]
+    [token, refresh]
+  );
+
+  const updateTransaction = useCallback(
+    async (id, patch) => {
+      try {
+        await api.updateTransaction(token, id, patch);
+        await refresh();
+      } catch (e) {
+        setSyncError(e.message);
+      }
+    },
+    [token, refresh]
   );
 
   const deleteTransaction = useCallback(
     async (id) => {
       try {
         await api.deleteTransaction(token, id);
-        persist({ ...data, transactions: data.transactions.filter((t) => t.id !== id) });
+        await refresh();
       } catch (e) {
         setSyncError(e.message);
       }
     },
-    [token, data, persist]
+    [token, refresh]
   );
 
   const updateGoal = useCallback(
@@ -260,6 +274,54 @@ export function DataProvider({ children }) {
     [token, data, persist]
   );
 
+  const addSipPlan = useCallback(
+    async (plan) => {
+      try {
+        const created = await api.addSipPlan(token, plan);
+        persist({ ...data, sipPlans: [...data.sipPlans, created] });
+      } catch (e) {
+        setSyncError(e.message);
+      }
+    },
+    [token, data, persist]
+  );
+
+  const deleteSipPlan = useCallback(
+    async (id) => {
+      try {
+        await api.deleteSipPlan(token, id);
+        persist({ ...data, sipPlans: data.sipPlans.filter((s) => s.id !== id) });
+      } catch (e) {
+        setSyncError(e.message);
+      }
+    },
+    [token, data, persist]
+  );
+
+  const addRecurringDeposit = useCallback(
+    async (rd) => {
+      try {
+        const created = await api.addRecurringDeposit(token, rd);
+        persist({ ...data, recurringDeposits: [...data.recurringDeposits, created] });
+      } catch (e) {
+        setSyncError(e.message);
+      }
+    },
+    [token, data, persist]
+  );
+
+  const deleteRecurringDeposit = useCallback(
+    async (id) => {
+      try {
+        await api.deleteRecurringDeposit(token, id);
+        persist({ ...data, recurringDeposits: data.recurringDeposits.filter((r) => r.id !== id) });
+      } catch (e) {
+        setSyncError(e.message);
+      }
+    },
+    [token, data, persist]
+  );
+
   const upsertBankAccount = useCallback(
     async (bankName, balance) => {
       try {
@@ -398,6 +460,7 @@ export function DataProvider({ children }) {
       syncError,
       refresh,
       addTransaction,
+      updateTransaction,
       deleteTransaction,
       updateGoal,
       addGoal,
@@ -412,12 +475,16 @@ export function DataProvider({ children }) {
       resetData,
       addRecurring,
       deleteRecurring,
+      addSipPlan,
+      deleteSipPlan,
+      addRecurringDeposit,
+      deleteRecurringDeposit,
       upsertBankAccount,
       deleteBankAccount,
       setProfile,
       markSip,
     }),
-    [data, derived, loaded, syncing, syncError, refresh, addTransaction, deleteTransaction, updateGoal, addGoal, updateBudget, addBudget, deleteBudget, addAsset, updateAsset, deleteAsset, addHolding, deleteHolding, resetData, addRecurring, deleteRecurring, upsertBankAccount, deleteBankAccount, setProfile, markSip]
+    [data, derived, loaded, syncing, syncError, refresh, addTransaction, updateTransaction, deleteTransaction, updateGoal, addGoal, updateBudget, addBudget, deleteBudget, addAsset, updateAsset, deleteAsset, addHolding, deleteHolding, resetData, addRecurring, deleteRecurring, addSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit, upsertBankAccount, deleteBankAccount, setProfile, markSip]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

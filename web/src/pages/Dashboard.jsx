@@ -74,7 +74,7 @@ export default function Dashboard() {
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [thisCycleTx]);
 
-  const totalBudgeted = data.budgets.reduce((s, b) => s + b.limit, 0);
+  const totalBudgeted = data.budgets.reduce((s, b) => s + b.limit, 0) + data.recurringExpenses.reduce((s, r) => s + r.amount, 0);
 
   const budgetRows = useMemo(() => {
     return data.budgets.map((b) => {
@@ -144,7 +144,7 @@ export default function Dashboard() {
         <SectionLabel>Budget vs. expense — overall</SectionLabel>
         <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 10 }}>
           <span style={{ fontWeight: 700, fontSize: 24 }}>{formatINR(expense)}</span>
-          <span style={{ color: 'var(--text-secondary)', fontSize: 14, marginLeft: 6 }}>of {formatINR(totalBudgeted)} budgeted</span>
+          <span style={{ color: 'var(--text-secondary)', fontSize: 14, marginLeft: 6 }}>of {formatINR(totalBudgeted)} budgeted (categories + recurring bills)</span>
         </div>
         <ProgressBar pct={totalBudgeted ? expense / totalBudgeted : 0} accent={expense > totalBudgeted ? 'rose' : 'teal'} />
       </Card>
