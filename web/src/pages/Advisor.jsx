@@ -83,13 +83,13 @@ export default function Advisor() {
   };
 
   return (
-    <div className="stack" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div className="page-header-row">
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)' }}>
+      <div className="page-header-row" style={{ flexShrink: 0 }}>
         <h1 className="page-title" style={{ margin: 0 }}>Advisor</h1>
         {hasConversation && <button className="btn btn--ghost" onClick={newChat} disabled={busy}>New chat</button>}
       </div>
 
-      <div style={{ maxWidth: 760, margin: '0 auto', width: '100%' }}>
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {!hasConversation ? (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
@@ -108,35 +108,33 @@ export default function Advisor() {
               </div>
             </div>
 
-            <div className="card" style={{ padding: 28 }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 24 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-faint)', fontWeight: 700, letterSpacing: 0.5 }}>CONNECTED</span>
-                {CONNECTED.map((c) => <span key={c} className="chip chip--active" style={{ cursor: 'default' }}>{c}</span>)}
-              </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-faint)', fontWeight: 700, letterSpacing: 0.5 }}>CONNECTED</span>
+              {CONNECTED.map((c) => <span key={c} className="chip chip--active" style={{ cursor: 'default' }}>{c}</span>)}
+            </div>
 
-              <div className="row" style={{ marginBottom: 24 }}>
-                {ACTION_CARDS.map((card) => (
-                  <div
-                    key={card.key}
-                    className="card"
-                    style={{ cursor: 'pointer', textAlign: 'center', padding: '20px 14px', background: 'var(--bg-elevated-2)' }}
-                    onClick={() => send(card.question)}
-                  >
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{card.label}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>{card.sub}</div>
-                  </div>
-                ))}
-              </div>
+            <div className="row" style={{ marginBottom: 16 }}>
+              {ACTION_CARDS.map((card) => (
+                <div
+                  key={card.key}
+                  className="card"
+                  style={{ cursor: 'pointer', padding: '20px 18px' }}
+                  onClick={() => send(card.question)}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{card.label}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>{card.sub}</div>
+                </div>
+              ))}
+            </div>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {SUGGESTIONS.map((q) => (
-                  <button key={q} className="chip" onClick={() => send(q)}>{q}</button>
-                ))}
-              </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {SUGGESTIONS.map((q) => (
+                <button key={q} className="chip" onClick={() => send(q)}>{q}</button>
+              ))}
             </div>
           </>
         ) : (
-          <div style={{ maxHeight: '54vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 820 }}>
             {messages.map((m, i) => (
               <ChatRow key={i} role={m.role} text={m.text} />
             ))}
@@ -152,59 +150,59 @@ export default function Advisor() {
             <div ref={bottomRef} />
           </div>
         )}
+      </div>
 
-        <div style={{ flexShrink: 0, marginTop: hasConversation ? 0 : 20 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'flex-end',
-              gap: 10,
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--hairline)',
-              borderRadius: 20,
-              padding: '10px 10px 10px 16px',
+      <div style={{ flexShrink: 0, paddingTop: 14, maxWidth: 820 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 10,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--hairline)',
+            borderRadius: 20,
+            padding: '10px 10px 10px 16px',
+          }}
+        >
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            placeholder="Ask anything about your money, or tell me about a transaction…"
+            value={input}
+            onChange={(e) => { setInput(e.target.value); autoGrow(e.target); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
             }}
+            style={{
+              flex: 1,
+              resize: 'none',
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              color: 'var(--text-primary)',
+              fontFamily: 'inherit',
+              fontSize: 15,
+              lineHeight: 1.5,
+              maxHeight: 160,
+              padding: '6px 0',
+            }}
+          />
+          <button
+            className="btn btn--teal"
+            style={{ borderRadius: '50%', width: 40, height: 40, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            onClick={() => send()}
+            disabled={busy || !input.trim()}
+            aria-label="Send"
           >
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              placeholder="Ask anything about your money, or tell me about a transaction…"
-              value={input}
-              onChange={(e) => { setInput(e.target.value); autoGrow(e.target); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  send();
-                }
-              }}
-              style={{
-                flex: 1,
-                resize: 'none',
-                border: 'none',
-                outline: 'none',
-                background: 'transparent',
-                color: 'var(--text-primary)',
-                fontFamily: 'inherit',
-                fontSize: 15,
-                lineHeight: 1.5,
-                maxHeight: 160,
-                padding: '6px 0',
-              }}
-            />
-            <button
-              className="btn btn--teal"
-              style={{ borderRadius: '50%', width: 40, height: 40, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-              onClick={() => send()}
-              disabled={busy || !input.trim()}
-              aria-label="Send"
-            >
-              <SendIcon />
-            </button>
-          </div>
-          <p style={{ fontSize: 11, color: 'var(--text-faint)', textAlign: 'center', margin: '8px 0 0' }}>
-            Enter to send · Shift+Enter for a new line
-          </p>
+            <SendIcon />
+          </button>
         </div>
+        <p style={{ fontSize: 11, color: 'var(--text-faint)', textAlign: 'center', margin: '8px 0 0' }}>
+          Enter to send · Shift+Enter for a new line
+        </p>
       </div>
     </div>
   );
