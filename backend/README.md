@@ -74,7 +74,11 @@ home Wi-Fi — what you actually want for "sync across devices."
 2. Go to render.com, sign up, click **New > Web Service**, connect the repo.
 3. Settings:
    - **Build command:** `pip install -r requirements.txt`
-   - **Start command:** `gunicorn run:app`
+   - **Start command:** `gunicorn run:app --timeout 120`
+     (the default 30s Gunicorn worker timeout is too short for the Advisor's
+     more detailed, multi-tool-call responses — without this flag, long
+     requests get killed mid-flight and show up in the browser as a
+     misleading "CORS blocked" error, even though CORS isn't the real issue)
    - **Instance type:** Free
 4. Add environment variables:
    - `JWT_SECRET_KEY` — any long random string (signs your login tokens)
