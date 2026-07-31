@@ -46,7 +46,7 @@ def _run_tool_loop(system_prompt, tools, tool_executors, user_content, history=N
     for _ in range(max_turns):
         response = client.messages.create(
             model=MODEL,
-            max_tokens=1024,
+            max_tokens=3000,
             system=system_prompt,
             tools=tools,
             messages=messages,
