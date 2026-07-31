@@ -74,7 +74,14 @@ export default function Advisor() {
   const send = async (overrideText) => {
     const question = (overrideText ?? input).trim();
     if (!question || busy) return;
-    const priorHistory = messages.map((m) => ({ role: m.role, text: m.text }));
+    // If the previous question failed, it's still sitting in `messages` with no
+    // paired assistant reply — sending that as history would give the API two
+    // consecutive "user" turns in a row, which it rejects outright. Drop it.
+    let historySource = messages;
+    if (historySource.length > 0 && historySource[historySource.length - 1].role === 'user') {
+      historySource = historySource.slice(0, -1);
+    }
+    const priorHistory = historySource.map((m) => ({ role: m.role, text: m.text }));
     setMessages((m) => [...m, { role: 'user', text: question }]);
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';

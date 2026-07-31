@@ -31,10 +31,18 @@ def advisor():
         if role in ('user', 'assistant') and text:
             history.append({'role': role, 'content': text})
 
+    if history and history[-1]['role'] == 'user':
+        # A trailing unpaired user turn (e.g. from a previously failed request)
+        # would give the API two consecutive user turns once the new question
+        # is appended — which it rejects outright. Drop it defensively.
+        history = history[:-1]
+
     try:
         result = agents.run_advisor(_current_user_id(), question, history=history)
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 503
+    except Exception as e:
+        return jsonify({'error': f'The advisor hit an unexpected error: {e}'}), 500
     return jsonify(result)
 
 
