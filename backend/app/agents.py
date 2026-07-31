@@ -9,9 +9,10 @@ is given, it never does the arithmetic itself.
 import os
 import json
 import calendar
+import time
 from datetime import datetime, timezone
 
-from anthropic import Anthropic
+from anthropic import Anthropic, APIStatusError
 
 from .models import db, User, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount, SipPlan, RecurringDeposit, apply_loan_payment
 from .tax_engine import compare_regimes
@@ -44,13 +45,28 @@ def _run_tool_loop(system_prompt, tools, tool_executors, user_content, history=N
     messages = list(history or []) + [{'role': 'user', 'content': user_content}]
 
     for _ in range(max_turns):
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=3000,
-            system=system_prompt,
-            tools=tools,
-            messages=messages,
-        )
+        response = None
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = client.messages.create(
+                    model=MODEL,
+                    max_tokens=3000,
+                    system=system_prompt,
+                    tools=tools,
+                    messages=messages,
+                )
+                break
+            except APIStatusError as e:
+                last_error = e
+                # 529 = Anthropic temporarily overloaded, 429 = rate limited —
+                # both are transient and worth a short retry before giving up.
+                if e.status_code in (529, 429) and attempt < 2:
+                    time.sleep(2 ** attempt)  # 1s, then 2s
+                    continue
+                raise
+        if response is None:
+            raise last_error
 
         tool_use_blocks = [b for b in response.content if b.type == 'tool_use']
         text_blocks = [b.text for b in response.content if b.type == 'text']

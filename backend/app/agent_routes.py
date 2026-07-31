@@ -41,6 +41,10 @@ def advisor():
         result = agents.run_advisor(_current_user_id(), question, history=history)
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 503
+    except agents.APIStatusError as e:
+        if e.status_code in (529, 429):
+            return jsonify({'error': "Anthropic's API is briefly overloaded right now — please try again in a few seconds."}), 503
+        return jsonify({'error': f'The advisor hit an unexpected error: {e}'}), 500
     except Exception as e:
         return jsonify({'error': f'The advisor hit an unexpected error: {e}'}), 500
     return jsonify(result)
