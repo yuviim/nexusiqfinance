@@ -20,7 +20,7 @@ const GOAL_ACCENTS = ['teal', 'amber', 'violet', 'rose'];
 const GOAL_ACCENT_VAR = { teal: 'var(--teal)', amber: 'var(--amber)', violet: 'var(--violet)', rose: 'var(--rose)' };
 
 export default function Investments() {
-  const { data, derived, markSip, addHolding, deleteHolding, addGoal, setProfile, addSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit } = useWealth();
+  const { data, derived, markSip, addHolding, deleteHolding, addGoal, deleteGoal, setProfile, addSipPlan, updateSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit } = useWealth();
   const { token } = useAuth();
   const holdings = data.investments.holdings;
   const total = derived.totalInvestments || 1;
@@ -28,6 +28,7 @@ export default function Investments() {
   const [name, setName] = useState('');
   const [category, setCategory] = useState(HOLDING_CATEGORIES[0]);
   const [value, setValue] = useState('');
+  const [holdingGoalId, setHoldingGoalId] = useState('');
   const [goalModalOpen, setGoalModalOpen] = useState(false);
 
   const [suggestBusy, setSuggestBusy] = useState(false);
@@ -35,9 +36,10 @@ export default function Investments() {
 
   const createHolding = async () => {
     if (!name.trim() || !value) return;
-    await addHolding({ name: name.trim(), category, value: parseFloat(value) });
+    await addHolding({ name: name.trim(), category, value: parseFloat(value), goalId: holdingGoalId ? parseInt(holdingGoalId, 10) : null });
     setName('');
     setValue('');
+    setHoldingGoalId('');
   };
 
   const askForSuggestions = async () => {
@@ -136,7 +138,14 @@ export default function Investments() {
         <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-secondary)' }}>
           Add as many SIPs as you like — each one can optionally be linked to a goal above.
         </p>
-        <SipPlanList plans={data.sipPlans} goals={data.goals} onAdd={addSipPlan} onDelete={deleteSipPlan} />
+        <SipPlanList
+          plans={data.sipPlans}
+          goals={data.goals}
+          holdings={data.investments.holdings}
+          onAdd={addSipPlan}
+          onMarkPaid={(id) => updateSipPlan(id, { markPaid: true })}
+          onDelete={deleteSipPlan}
+        />
       </Card>
 
       <SectionLabel style={{ marginLeft: 2 }}>Recurring deposits (RD)</SectionLabel>
@@ -146,21 +155,27 @@ export default function Investments() {
 
       <SectionLabel style={{ marginLeft: 2 }}>Holdings</SectionLabel>
       <Card>
-        {holdings.map((h, idx) => (
-          <div key={h.id}>
-            {idx > 0 && <Divider />}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{h.category}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(h.value)}</div>
-                <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => deleteHolding(h.id)}>✕</button>
+        {holdings.map((h, idx) => {
+          const linkedGoal = data.goals.find((g) => g.id === h.goalId);
+          return (
+            <div key={h.id}>
+              {idx > 0 && <Divider />}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    {h.category}
+                    {linkedGoal ? ` · → ${linkedGoal.name}` : ' · General / no goal'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(h.value)}</div>
+                  <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => deleteHolding(h.id)}>✕</button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <Divider />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input type="text" placeholder="Holding name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: '1 1 140px' }} />
@@ -172,6 +187,15 @@ export default function Investments() {
             {HOLDING_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
           </select>
           <input type="number" placeholder="Value" value={value} onChange={(e) => setValue(e.target.value)} style={{ flex: '1 1 120px' }} />
+          <select
+            value={holdingGoalId}
+            onChange={(e) => setHoldingGoalId(e.target.value)}
+            style={{ background: 'var(--bg-elevated-2)', color: 'var(--text-primary)', border: '1px solid var(--hairline)', borderRadius: 'var(--radius-md)', padding: '0 10px' }}
+            title="Optional — which goal this holding counts toward"
+          >
+            <option value="">General / no specific goal</option>
+            {data.goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
           <button className="btn btn--teal" onClick={createHolding}>Add</button>
         </div>
       </Card>
@@ -192,7 +216,10 @@ export default function Investments() {
             <Card key={g.id}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontWeight: 600, fontSize: 16 }}>{g.name}</span>
-                <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-secondary)' }}>{Math.round(pct * 100)}%</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-secondary)' }}>{Math.round(pct * 100)}%</span>
+                  <button className="btn btn--ghost" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => { if (window.confirm(`Delete goal "${g.name}"?`)) deleteGoal(g.id); }}>✕</button>
+                </span>
               </div>
               <ProgressBar pct={pct} accent={g.color} height={10} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
@@ -302,43 +329,65 @@ function SipCard({ amount, paid, onSave, onMarkDone }) {
   );
 }
 
-function SipPlanList({ plans, goals, onAdd, onDelete }) {
+function SipPlanList({ plans, goals, holdings, onAdd, onMarkPaid, onDelete }) {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [goalId, setGoalId] = useState('');
+  const [linkedHoldingId, setLinkedHoldingId] = useState('');
 
   const create = async () => {
     if (!name.trim() || !amount) return;
-    await onAdd({ name: name.trim(), amount: parseFloat(amount), goalId: goalId ? parseInt(goalId, 10) : null });
+    await onAdd({
+      name: name.trim(),
+      amount: parseFloat(amount),
+      goalId: goalId ? parseInt(goalId, 10) : null,
+      linkedHoldingId: linkedHoldingId ? parseInt(linkedHoldingId, 10) : null,
+    });
     setName('');
     setAmount('');
     setGoalId('');
+    setLinkedHoldingId('');
   };
 
   const goalName = (id) => goals.find((g) => g.id === id)?.name;
+  const holdingName = (id) => holdings.find((h) => h.id === id)?.name;
+  const currentMonthKey = `${new Date().getFullYear()}-${new Date().getMonth() + 1}`;
 
   return (
     <>
       {plans.length === 0 && (
         <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--text-secondary)' }}>No additional SIPs yet.</p>
       )}
-      {plans.map((p, idx) => (
-        <div key={p.id}>
-          {idx > 0 && <Divider />}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
-              {!!p.goalId && goalName(p.goalId) && (
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>→ {goalName(p.goalId)}</div>
-              )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(p.amount)}</div>
-              <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onDelete(p.id)}>✕</button>
+      {plans.map((p, idx) => {
+        const paidThisMonth = p.lastPaidMonth === currentMonthKey;
+        return (
+          <div key={p.id}>
+            {idx > 0 && <Divider />}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  {p.goalId && goalName(p.goalId) ? `→ ${goalName(p.goalId)}` : ''}
+                  {p.goalId && p.linkedHoldingId ? ' · ' : ''}
+                  {p.linkedHoldingId && holdingName(p.linkedHoldingId) ? `funds: ${holdingName(p.linkedHoldingId)}` : ''}
+                  {!p.goalId && !p.linkedHoldingId ? 'Not linked to a goal or holding' : ''}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(p.amount)}</div>
+                {paidThisMonth ? (
+                  <span style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 600 }}>Paid ✓</span>
+                ) : (
+                  <button className="btn btn--teal" style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => onMarkPaid(p.id)}>
+                    Mark as paid
+                  </button>
+                )}
+                <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onDelete(p.id)}>✕</button>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {plans.length > 0 && <Divider />}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input type="text" placeholder="SIP name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: '1 1 140px' }} />
@@ -350,6 +399,15 @@ function SipPlanList({ plans, goals, onAdd, onDelete }) {
         >
           <option value="">No linked goal</option>
           {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
+        <select
+          value={linkedHoldingId}
+          onChange={(e) => setLinkedHoldingId(e.target.value)}
+          style={{ background: 'var(--bg-elevated-2)', color: 'var(--text-primary)', border: '1px solid var(--hairline)', borderRadius: 'var(--radius-md)', padding: '0 10px' }}
+          title="Optional — which holding actually receives this SIP's money"
+        >
+          <option value="">No linked fund</option>
+          {holdings.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
         </select>
         <button className="btn btn--teal" onClick={create}>Add</button>
       </div>

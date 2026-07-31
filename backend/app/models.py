@@ -188,9 +188,10 @@ class InvestmentHolding(db.Model):
     category = db.Column(db.String(80), nullable=False)
     name = db.Column(db.String(120), nullable=False)
     value = db.Column(db.Float, nullable=False, default=0)
+    goal_id = db.Column(db.Integer, db.ForeignKey('goals.id'), nullable=True)  # optional — which goal this holding counts toward
 
     def to_dict(self):
-        return {'id': self.id, 'category': self.category, 'name': self.name, 'value': self.value}
+        return {'id': self.id, 'category': self.category, 'name': self.name, 'value': self.value, 'goalId': self.goal_id}
 
 
 class SipPlan(db.Model):
@@ -200,9 +201,15 @@ class SipPlan(db.Model):
     name = db.Column(db.String(120), nullable=False)
     amount = db.Column(db.Float, nullable=False, default=0)
     goal_id = db.Column(db.Integer, db.ForeignKey('goals.id'), nullable=True)
+    linked_holding_id = db.Column(db.Integer, db.ForeignKey('investment_holdings.id'), nullable=True)
+    last_paid_month = db.Column(db.String(7), nullable=True)  # 'YYYY-MM' — last month this SIP was marked paid
 
     def to_dict(self):
-        return {'id': self.id, 'name': self.name, 'amount': self.amount, 'goalId': self.goal_id}
+        return {
+            'id': self.id, 'name': self.name, 'amount': self.amount,
+            'goalId': self.goal_id, 'linkedHoldingId': self.linked_holding_id,
+            'lastPaidMonth': self.last_paid_month,
+        }
 
 
 class RecurringDeposit(db.Model):

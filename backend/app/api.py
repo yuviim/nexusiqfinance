@@ -290,6 +290,21 @@ def update_goal(goal_id):
     return jsonify(goal.to_dict())
 
 
+@api_bp.delete('/goals/<int:goal_id>')
+@jwt_required()
+def delete_goal(goal_id):
+    user = current_user()
+    goal = Goal.query.filter_by(id=goal_id, user_id=user.id).first()
+    if not goal:
+        return jsonify({'error': 'Goal not found'}), 404
+    # Unlink anything pointing at this goal rather than leaving a dangling reference
+    SipPlan.query.filter_by(user_id=user.id, goal_id=goal_id).update({'goal_id': None})
+    InvestmentHolding.query.filter_by(user_id=user.id, goal_id=goal_id).update({'goal_id': None})
+    db.session.delete(goal)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 # ---- Assets / Liabilities ----
 
 @api_bp.post('/assets')
@@ -368,7 +383,13 @@ def add_holding():
     except (TypeError, ValueError):
         return jsonify({'error': 'value must be a number'}), 400
 
-    holding = InvestmentHolding(user_id=user.id, category=payload.get('category') or 'Other', name=name, value=value)
+    goal_id = payload.get('goalId') or None
+    if goal_id is not None:
+        goal = Goal.query.filter_by(id=goal_id, user_id=user.id).first()
+        if not goal:
+            return jsonify({'error': 'goalId does not match one of your goals'}), 400
+
+    holding = InvestmentHolding(user_id=user.id, category=payload.get('category') or 'Other', name=name, value=value, goal_id=goal_id)
     db.session.add(holding)
     db.session.commit()
     return jsonify(holding.to_dict()), 201
@@ -391,6 +412,13 @@ def update_holding(holding_id):
             holding.value = float(payload['value'])
         except (TypeError, ValueError):
             return jsonify({'error': 'value must be a number'}), 400
+    if 'goalId' in payload:
+        goal_id = payload['goalId'] or None
+        if goal_id is not None:
+            goal = Goal.query.filter_by(id=goal_id, user_id=user.id).first()
+            if not goal:
+                return jsonify({'error': 'goalId does not match one of your goals'}), 400
+        holding.goal_id = goal_id
     db.session.commit()
     return jsonify(holding.to_dict())
 
@@ -541,7 +569,13 @@ def add_sip_plan():
         if not goal:
             return jsonify({'error': 'goalId does not match one of your goals'}), 400
 
-    plan = SipPlan(user_id=user.id, name=name, amount=amount, goal_id=goal_id)
+    holding_id = payload.get('linkedHoldingId') or None
+    if holding_id is not None:
+        holding = InvestmentHolding.query.filter_by(id=holding_id, user_id=user.id).first()
+        if not holding:
+            return jsonify({'error': 'linkedHoldingId does not match one of your holdings'}), 400
+
+    plan = SipPlan(user_id=user.id, name=name, amount=amount, goal_id=goal_id, linked_holding_id=holding_id)
     db.session.add(plan)
     db.session.commit()
     return jsonify(plan.to_dict()), 201
@@ -569,6 +603,25 @@ def update_sip_plan(plan_id):
             if not goal:
                 return jsonify({'error': 'goalId does not match one of your goals'}), 400
         plan.goal_id = goal_id
+    if 'linkedHoldingId' in payload:
+        holding_id = payload['linkedHoldingId'] or None
+        if holding_id is not None:
+            holding = InvestmentHolding.query.filter_by(id=holding_id, user_id=user.id).first()
+            if not holding:
+                return jsonify({'error': 'linkedHoldingId does not match one of your holdings'}), 400
+        plan.linked_holding_id = holding_id
+    if payload.get('markPaid'):
+        current_month = month_key()
+        if plan.last_paid_month != current_month:
+            plan.last_paid_month = current_month
+            if plan.goal_id:
+                goal = Goal.query.get(plan.goal_id)
+                if goal:
+                    goal.current = (goal.current or 0) + plan.amount
+            if plan.linked_holding_id:
+                holding = InvestmentHolding.query.get(plan.linked_holding_id)
+                if holding:
+                    holding.value = (holding.value or 0) + plan.amount
     db.session.commit()
     return jsonify(plan.to_dict())
 

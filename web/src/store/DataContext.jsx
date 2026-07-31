@@ -128,6 +128,20 @@ export function DataProvider({ children }) {
     [token, data, persist]
   );
 
+  const deleteGoal = useCallback(
+    async (id) => {
+      try {
+        await api.deleteGoal(token, id);
+        // Deleting a goal also unlinks any SIPs/holdings pointing at it server-side —
+        // refresh rather than patch locally so those stay in sync.
+        await refresh();
+      } catch (e) {
+        setSyncError(e.message);
+      }
+    },
+    [token, refresh]
+  );
+
   const addGoal = useCallback(
     async (goal) => {
       try {
@@ -284,6 +298,20 @@ export function DataProvider({ children }) {
       }
     },
     [token, data, persist]
+  );
+
+  const updateSipPlan = useCallback(
+    async (id, patch) => {
+      try {
+        await api.updateSipPlan(token, id, patch);
+        // markPaid can bump a linked goal's current amount and/or a linked
+        // holding's value server-side — refresh so both stay in sync.
+        await refresh();
+      } catch (e) {
+        setSyncError(e.message);
+      }
+    },
+    [token, refresh]
   );
 
   const deleteSipPlan = useCallback(
@@ -464,6 +492,7 @@ export function DataProvider({ children }) {
       deleteTransaction,
       updateGoal,
       addGoal,
+      deleteGoal,
       updateBudget,
       addBudget,
       deleteBudget,
@@ -476,6 +505,7 @@ export function DataProvider({ children }) {
       addRecurring,
       deleteRecurring,
       addSipPlan,
+      updateSipPlan,
       deleteSipPlan,
       addRecurringDeposit,
       deleteRecurringDeposit,
@@ -484,7 +514,7 @@ export function DataProvider({ children }) {
       setProfile,
       markSip,
     }),
-    [data, derived, loaded, syncing, syncError, refresh, addTransaction, updateTransaction, deleteTransaction, updateGoal, addGoal, updateBudget, addBudget, deleteBudget, addAsset, updateAsset, deleteAsset, addHolding, deleteHolding, resetData, addRecurring, deleteRecurring, addSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit, upsertBankAccount, deleteBankAccount, setProfile, markSip]
+    [data, derived, loaded, syncing, syncError, refresh, addTransaction, updateTransaction, deleteTransaction, updateGoal, addGoal, deleteGoal, updateBudget, addBudget, deleteBudget, addAsset, updateAsset, deleteAsset, addHolding, deleteHolding, resetData, addRecurring, deleteRecurring, addSipPlan, updateSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit, upsertBankAccount, deleteBankAccount, setProfile, markSip]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

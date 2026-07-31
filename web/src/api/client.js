@@ -64,6 +64,7 @@ export const api = {
   deleteBudget: (token, id) => request(`/api/budgets/${id}`, { method: 'DELETE', token }),
   addGoal: (token, goal) => request('/api/goals', { method: 'POST', body: goal, token }),
   updateGoal: (token, id, patch) => request(`/api/goals/${id}`, { method: 'PUT', body: patch, token }),
+  deleteGoal: (token, id) => request(`/api/goals/${id}`, { method: 'DELETE', token }),
   updateProfile: (token, patch) => request('/api/profile', { method: 'PUT', body: patch, token }),
   setSip: (token, paid, monthKey) => request('/api/sip', { method: 'POST', body: { paid, monthKey }, token }),
 
