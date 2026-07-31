@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
-from .models import db, User, Asset, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount, BANK_NAMES, SessionInvalid, SipPlan, RecurringDeposit
+from .models import db, User, Asset, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount, BANK_NAMES, SessionInvalid, SipPlan, RecurringDeposit, apply_loan_payment
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -113,6 +113,7 @@ def add_transaction():
     )
     db.session.add(tx)
     _adjust_bank_balance(user.id, bank_name, ttype, amount)
+    apply_loan_payment(user.id, category, tx.note, amount)
     db.session.commit()
     return jsonify(tx.to_dict()), 201
 

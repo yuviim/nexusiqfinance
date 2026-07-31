@@ -128,6 +128,7 @@ export default function Budget() {
 }
 
 function RecurringList({ items, transactions, onAdd, onDelete, onLog }) {
+  const [payAmounts, setPayAmounts] = useState({});
   const [name, setName] = useState('');
   const [category, setCategory] = useState(RECURRING_CATEGORIES[0]);
   const [amount, setAmount] = useState('');
@@ -149,9 +150,10 @@ function RecurringList({ items, transactions, onAdd, onDelete, onLog }) {
     });
 
   const logNow = (item) => {
+    const amountToLog = payAmounts[item.id] ? parseFloat(payAmounts[item.id]) : item.amount;
     onLog({
       type: 'expense',
-      amount: item.amount,
+      amount: amountToLog > 0 ? amountToLog : item.amount,
       category: item.category,
       note: item.name,
       date: now.toISOString().slice(0, 10),
@@ -191,6 +193,20 @@ function RecurringList({ items, transactions, onAdd, onDelete, onLog }) {
               <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(item.amount)}</div>
               {loggedThisMonth(item) ? (
                 <span style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 600 }}>Logged ✓</span>
+              ) : item.category === 'Loan EMI' ? (
+                <>
+                  <input
+                    type="number"
+                    placeholder={String(item.amount)}
+                    value={payAmounts[item.id] ?? ''}
+                    onChange={(e) => setPayAmounts((p) => ({ ...p, [item.id]: e.target.value }))}
+                    style={{ width: 100, fontSize: 12, padding: '4px 8px' }}
+                    title="Actually paid this month (defaults to the EMI if left blank — e.g. if you pay extra via ECS)"
+                  />
+                  <button className="btn btn--teal" style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => logNow(item)}>
+                    Log payment
+                  </button>
+                </>
               ) : (
                 <button className="btn btn--teal" style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => logNow(item)}>
                   Log this month

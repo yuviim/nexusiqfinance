@@ -90,6 +90,26 @@ class RecurringExpense(db.Model):
         }
 
 
+def apply_loan_payment(user_id, category, note, amount):
+    """If a logged transaction matches a Loan EMI recurring bill by name, reduce
+    that bill's outstanding balance by the actual principal portion of the
+    payment (payment minus that month's accrued interest) — so paying more
+    than the scheduled EMI (e.g. via ECS) correctly shows up as extra progress
+    against the loan, not just as "spent this month" with no lasting effect.
+    Only applied when a transaction is first created — editing or deleting a
+    transaction does not currently reverse this adjustment."""
+    if category != 'Loan EMI' or not note:
+        return
+    bill = RecurringExpense.query.filter_by(user_id=user_id, category='Loan EMI').filter(
+        db.func.lower(RecurringExpense.name) == note.strip().lower()
+    ).first()
+    if not bill or not bill.outstanding_balance:
+        return
+    monthly_interest = bill.outstanding_balance * (bill.interest_rate or 0) / 100 / 12
+    principal_paid = max(0, amount - monthly_interest)
+    bill.outstanding_balance = max(0, bill.outstanding_balance - principal_paid)
+
+
 class Transaction(db.Model):
     __tablename__ = 'transactions'
     id = db.Column(db.Integer, primary_key=True)

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 from anthropic import Anthropic
 
-from .models import db, User, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount, SipPlan, RecurringDeposit
+from .models import db, User, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount, SipPlan, RecurringDeposit, apply_loan_payment
 from .tax_engine import compare_regimes
 
 MODEL = os.environ.get('ANTHROPIC_MODEL', 'claude-sonnet-5')
@@ -394,6 +394,7 @@ def _build_create_transaction_executor(user_id):
 
         tx = Transaction(user_id=user_id, type=ttype, amount=amount, category=category, note=note)
         db.session.add(tx)
+        apply_loan_payment(user_id, category, note, amount)
         db.session.commit()
         return {'created': True, 'transaction': tx.to_dict()}
     return executor

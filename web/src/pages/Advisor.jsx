@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -6,7 +6,6 @@ import '../components/markdown.css';
 import { useAuth } from '../store/AuthContext';
 import { useWealth } from '../store/DataContext';
 import { api } from '../api/client';
-import { formatINR } from '../format';
 
 const ACTION_CARDS = [
   {
@@ -42,20 +41,11 @@ function greeting() {
   return 'Good evening';
 }
 
-function monthSavingsRate(transactions, income, sip, year, month) {
-  const tx = transactions.filter((t) => {
-    const d = new Date(t.date);
-    return d.getFullYear() === year && d.getMonth() === month;
-  });
-  const spent = tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-  const denom = income || 1;
-  return Math.max(Math.round(((denom - spent - sip) / denom) * 100), 0);
-}
 
 export default function Advisor() {
   const navigate = useNavigate();
   const { token } = useAuth();
-  const { data, derived, refresh } = useWealth();
+  const { data, refresh } = useWealth();
   const [messages, setMessages] = useState([]);
   const [history, setHistory] = useState([]);
   const [input, setInput] = useState('');
@@ -121,44 +111,6 @@ export default function Advisor() {
     setError(null);
   };
 
-  const now = new Date();
-  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const prevSavingsRate = useMemo(
-    () => monthSavingsRate(data.transactions, data.profile.monthlyIncome, data.investments.sipMonthly || 0, prevDate.getFullYear(), prevDate.getMonth()),
-    [data.transactions, data.profile.monthlyIncome, data.investments.sipMonthly]
-  );
-  const savingsDelta = derived.savingsRate - prevSavingsRate;
-
-  const surplusUnallocated = useMemo(() => {
-    const categoryBudgetTotal = data.budgets.reduce((s, b) => s + b.limit, 0);
-    const recurringBillsTotal = data.recurringExpenses.reduce((s, r) => s + r.amount, 0);
-    const monthlyIncome = data.profile.monthlyIncome || 0;
-    const surplus = monthlyIncome - categoryBudgetTotal - recurringBillsTotal;
-    const committed =
-      (data.investments.sipMonthly || 0) +
-      data.sipPlans.reduce((s, p) => s + p.amount, 0) +
-      data.recurringDeposits.reduce((s, r) => s + r.amount, 0);
-    return surplus - committed;
-  }, [data]);
-
-  const biggestSpend = useMemo(() => {
-    const entries = Object.entries(derived.spendByCategory || {});
-    if (!entries.length) return null;
-    entries.sort((a, b) => b[1] - a[1]);
-    return { category: entries[0][0], amount: entries[0][1] };
-  }, [derived.spendByCategory]);
-
-  const tip = useMemo(() => {
-    if (surplusUnallocated > 0) {
-      return { text: `You have ${formatINR(surplusUnallocated)} of surplus not yet assigned to a goal.`, cta: 'Add a SIP or RD', to: '/investments' };
-    }
-    const highInterestLoan = data.recurringExpenses.find((r) => r.category === 'Loan EMI' && r.interestRate > 10 && r.outstandingBalance > 0);
-    if (highInterestLoan) {
-      return { text: `"${highInterestLoan.name}" is at ${highInterestLoan.interestRate}% interest — prepaying it may beat what you'd earn investing.`, cta: 'Ask the advisor', to: null };
-    }
-    return { text: "Your surplus is fully allocated and no loan stands out as high-interest — you're in a solid spot.", cta: null, to: null };
-  }, [surplusUnallocated, data.recurringExpenses]);
-
   const dataSourceRows = [
     { label: 'Bank accounts', count: data.bankAccounts.length, to: '/banks' },
     { label: 'Investments', count: data.investments.holdings.length, to: '/investments' },
@@ -172,12 +124,12 @@ export default function Advisor() {
       paddingLeft: 40,
       paddingRight: 40,
       display: 'grid',
-      gridTemplateColumns: '240px 1fr 300px',
-      gap: 28,
-      height: 'calc(100vh - 160px)',
+      gridTemplateColumns: '200px 1fr',
+      gap: 0,
+      height: 'calc(100vh - 128px)',
     }}>
 
-      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, paddingRight: 24, borderRight: '1px solid var(--hairline)' }}>
         <button className="btn btn--teal" style={{ marginBottom: 16 }} onClick={newChat} disabled={busy}>+ New chat</button>
 
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-faint)', letterSpacing: 0.5, marginBottom: 8 }}>HISTORY</div>
@@ -218,7 +170,7 @@ export default function Advisor() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, maxWidth: 820, width: '100%', margin: '0 auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, paddingLeft: 32 }}>
         <div style={{
           flex: 1,
           overflowY: 'auto',
@@ -228,14 +180,13 @@ export default function Advisor() {
           justifyContent: hasConversation ? 'flex-start' : 'center',
         }}>
           {!hasConversation ? (
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', maxWidth: 680, margin: '0 auto' }}>
               <div style={{
                 width: 52, height: 52, borderRadius: 15, background: 'var(--accent-gradient)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px',
+                fontSize: 22, fontWeight: 700, color: 'white',
               }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" fill="white" />
-                </svg>
+                N
               </div>
               <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 6px' }}>{greeting()}, {data.profile.name}</h2>
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 24px' }}>Ask questions about your money and get insights instantly.</p>
@@ -259,7 +210,7 @@ export default function Advisor() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {messages.map((m, i) => (
-                <ChatRow key={i} role={m.role} text={m.text} />
+                <ChatRow key={i} role={m.role} text={m.text} userName={data.profile.name} />
               ))}
               {busy && <ThinkingRow />}
               {!!error && (
@@ -314,69 +265,15 @@ export default function Advisor() {
         </div>
       </div>
 
-      <div style={{ overflowY: 'auto', minHeight: 0 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-faint)', letterSpacing: 0.5, marginBottom: 10 }}>INSIGHTS</div>
-
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Savings rate</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--teal)', marginTop: 2 }}>{derived.savingsRate}%</div>
-          {savingsDelta !== 0 && (
-            <div style={{ fontSize: 11, color: savingsDelta > 0 ? 'var(--teal)' : 'var(--rose)', marginTop: 4 }}>
-              {savingsDelta > 0 ? '↑' : '↓'} {Math.abs(savingsDelta)}% vs last month
-            </div>
-          )}
-        </div>
-
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Surplus (unallocated)</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: surplusUnallocated > 0 ? 'var(--amber)' : 'var(--text-primary)', marginTop: 2 }}>{formatINR(surplusUnallocated)}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 4 }}>This month</div>
-        </div>
-
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Biggest spend</div>
-          {biggestSpend ? (
-            <>
-              <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{biggestSpend.category}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>{formatINR(biggestSpend.amount)}</div>
-            </>
-          ) : (
-            <div style={{ fontSize: 13, color: 'var(--text-faint)', marginTop: 4 }}>Nothing logged yet</div>
-          )}
-        </div>
-
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Financial health</div>
-          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 2 }}>{derived.financialHealthScore}<span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>/100</span></div>
-          <div style={{ height: 5, background: 'var(--bg-elevated-2)', borderRadius: 3, marginTop: 8, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${derived.financialHealthScore}%`, background: 'var(--teal)' }} />
-          </div>
-        </div>
-
-        <div className="card">
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Tip for you</div>
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 8px', lineHeight: 1.5 }}>{tip.text}</p>
-          {tip.cta && (
-            <button
-              className="btn btn--ghost"
-              style={{ fontSize: 12, padding: '6px 10px' }}
-              onClick={() => (tip.to ? navigate(tip.to) : send('Where should I invest my unallocated surplus?'))}
-            >
-              {tip.cta} →
-            </button>
-          )}
-        </div>
-      </div>
-
     </div>
   );
 }
 
-function ChatRow({ role, text }) {
+function ChatRow({ role, text, userName }) {
   const isUser = role === 'user';
   return (
     <div style={{ display: 'flex', gap: 12, padding: '10px 4px', flexDirection: isUser ? 'row-reverse' : 'row' }}>
-      <Avatar role={role} />
+      <Avatar role={role} name={userName} />
       <div style={{ maxWidth: '82%', paddingTop: 4 }}>
         {isUser ? (
           <div style={{ background: 'var(--teal-dim)', borderRadius: 16, padding: '10px 14px', fontSize: 14.5, whiteSpace: 'pre-wrap' }}>
@@ -422,19 +319,18 @@ function ThinkingRow() {
   );
 }
 
-function Avatar({ role }) {
+function Avatar({ role, name }) {
   if (role === 'user') {
+    const initial = (name || 'Y').trim().charAt(0).toUpperCase();
     return (
-      <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--bg-elevated-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
-        You
+      <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--bg-elevated-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>
+        {initial}
       </div>
     );
   }
   return (
-    <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" fill="white" />
-      </svg>
+    <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700, color: 'white' }}>
+      N
     </div>
   );
 }
