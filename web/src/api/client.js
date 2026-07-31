@@ -116,7 +116,7 @@ export const api = {
   deleteAdvancePayment: (token, id) => request(`/api/tax/advance-payments/${id}`, { method: 'DELETE', token }),
 
   // Agents
-  askAdvisor: (token, message) => request('/api/agents/advisor', { method: 'POST', body: { message }, token, timeoutMs: 60000 }),
+  askAdvisor: (token, message, history) => request('/api/agents/advisor', { method: 'POST', body: { message, history }, token, timeoutMs: 60000 }),
   askTracker: (token, text) => request('/api/agents/tracker', { method: 'POST', body: { text }, token, timeoutMs: 60000 }),
   askAuditor: (token, message) => request('/api/agents/auditor', { method: 'POST', body: { message }, token, timeoutMs: 60000 }),
 };

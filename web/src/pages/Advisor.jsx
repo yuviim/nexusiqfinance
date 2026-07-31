@@ -74,13 +74,14 @@ export default function Advisor() {
   const send = async (overrideText) => {
     const question = (overrideText ?? input).trim();
     if (!question || busy) return;
+    const priorHistory = messages.map((m) => ({ role: m.role, text: m.text }));
     setMessages((m) => [...m, { role: 'user', text: question }]);
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setBusy(true);
     setError(null);
     try {
-      const res = await api.askAdvisor(token, question);
+      const res = await api.askAdvisor(token, question, priorHistory);
       setMessages((m) => [...m, { role: 'assistant', text: res.reply }]);
       if (res.created) await refresh();
     } catch (e) {

@@ -22,8 +22,17 @@ def advisor():
     question = (payload.get('message') or '').strip()
     if not question:
         return jsonify({'error': 'message is required'}), 400
+
+    raw_history = payload.get('history') or []
+    history = []
+    for turn in raw_history[-20:]:  # cap length so context doesn't grow unbounded
+        role = turn.get('role')
+        text = turn.get('text')
+        if role in ('user', 'assistant') and text:
+            history.append({'role': role, 'content': text})
+
     try:
-        result = agents.run_advisor(_current_user_id(), question)
+        result = agents.run_advisor(_current_user_id(), question, history=history)
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 503
     return jsonify(result)

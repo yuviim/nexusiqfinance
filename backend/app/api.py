@@ -20,6 +20,19 @@ def month_key(dt=None):
     return f'{dt.year}-{dt.month}'
 
 
+def _serialize_goals(goals, holdings):
+    """Goal progress = the goal's own manually-tracked current amount PLUS the
+    value of any holdings linked to it — holdings are the real, live source of
+    truth for whatever they're worth, rather than a separately-drifting number."""
+    out = []
+    for g in goals:
+        linked_total = sum(h.value for h in holdings if h.goal_id == g.id)
+        d = g.to_dict()
+        d['current'] = (g.current or 0) + linked_total
+        out.append(d)
+    return out
+
+
 @api_bp.get('/state')
 @jwt_required()
 def get_state():
@@ -42,7 +55,7 @@ def get_state():
         'liabilities': [l.to_dict() for l in liabilities],
         'transactions': [t.to_dict() for t in transactions],
         'budgets': [b.to_dict() for b in budgets],
-        'goals': [g.to_dict() for g in goals],
+        'goals': _serialize_goals(goals, holdings),
         'investments': {
             'sipMonthly': user.sip_monthly,
             'holdings': [h.to_dict() for h in holdings],
@@ -614,14 +627,17 @@ def update_sip_plan(plan_id):
         current_month = month_key()
         if plan.last_paid_month != current_month:
             plan.last_paid_month = current_month
-            if plan.goal_id:
-                goal = Goal.query.get(plan.goal_id)
-                if goal:
-                    goal.current = (goal.current or 0) + plan.amount
             if plan.linked_holding_id:
                 holding = InvestmentHolding.query.get(plan.linked_holding_id)
                 if holding:
                     holding.value = (holding.value or 0) + plan.amount
+                # goal.current is intentionally NOT bumped here — the goal's
+                # displayed total is computed as current + sum(linked holdings),
+                # so bumping both would double-count this same payment.
+            elif plan.goal_id:
+                goal = Goal.query.get(plan.goal_id)
+                if goal:
+                    goal.current = (goal.current or 0) + plan.amount
     db.session.commit()
     return jsonify(plan.to_dict())
 

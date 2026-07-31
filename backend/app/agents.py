@@ -39,9 +39,9 @@ def _month_key(dt=None):
     return f'{dt.year}-{dt.month}'
 
 
-def _run_tool_loop(system_prompt, tools, tool_executors, user_content, max_turns=4):
+def _run_tool_loop(system_prompt, tools, tool_executors, user_content, history=None, max_turns=4):
     client = get_client()
-    messages = [{'role': 'user', 'content': user_content}]
+    messages = list(history or []) + [{'role': 'user', 'content': user_content}]
 
     for _ in range(max_turns):
         response = client.messages.create(
@@ -246,8 +246,10 @@ def _build_snapshot_executor(user_id):
             'estimatedMonthlySurplus': user.monthly_income - user.monthly_budget - total_recurring - user.sip_monthly,
             'goals': [
                 {
-                    'name': g.name, 'target': g.target, 'current': g.current,
+                    'name': g.name, 'target': g.target,
+                    'current': (g.current or 0) + sum(h.value for h in holdings if h.goal_id == g.id),
                     'targetDate': g.target_date.isoformat() if g.target_date else None,
+                    'linkedHoldings': [h.name for h in holdings if h.goal_id == g.id],
                 }
                 for g in goals
             ],
@@ -293,7 +295,7 @@ def _build_surplus_projection_executor(user_id):
     return executor
 
 
-def run_advisor(user_id, question):
+def run_advisor(user_id, question, history=None):
     categories = [b.category for b in Budget.query.filter_by(user_id=user_id).all()] or ['Other']
     if 'Income' not in categories:
         categories = categories + ['Income']
@@ -322,7 +324,7 @@ def run_advisor(user_id, question):
         'get_surplus_projection': _build_surplus_projection_executor(user_id),
         'create_transaction': tracked_create_transaction,
     }
-    reply = _run_tool_loop(system_prompt, tools, executors, question)
+    reply = _run_tool_loop(system_prompt, tools, executors, question, history=history)
     return {
         'reply': reply,
         'created': bool(outcome.get('created')),
