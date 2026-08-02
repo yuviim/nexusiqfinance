@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.exceptions import HTTPException
 from flask_sqlalchemy import SQLAlchemy
@@ -189,9 +189,25 @@ class InvestmentHolding(db.Model):
     name = db.Column(db.String(120), nullable=False)
     value = db.Column(db.Float, nullable=False, default=0)
     goal_id = db.Column(db.Integer, db.ForeignKey('goals.id'), nullable=True)  # optional — which goal this holding counts toward
+    is_foreign = db.Column(db.Boolean, nullable=False, default=False)  # e.g. US stocks — different LTCG threshold, needs Schedule FA
+    purchase_date = db.Column(db.Date, nullable=True)  # optional — enables holding-period + gain calculations
+    purchase_price = db.Column(db.Float, nullable=True)  # optional — total cost basis (not per-unit), same currency basis as `value`
 
     def to_dict(self):
-        return {'id': self.id, 'category': self.category, 'name': self.name, 'value': self.value, 'goalId': self.goal_id}
+        d = {
+            'id': self.id, 'category': self.category, 'name': self.name, 'value': self.value, 'goalId': self.goal_id,
+            'isForeign': self.is_foreign,
+            'purchaseDate': self.purchase_date.isoformat() if self.purchase_date else None,
+            'purchasePrice': self.purchase_price,
+        }
+        if self.purchase_date and self.purchase_price is not None:
+            holding_days = (date.today() - self.purchase_date).days
+            long_term_threshold_days = 730 if self.is_foreign else 365  # 24mo foreign, 12mo domestic equity/MF
+            d['unrealizedGain'] = self.value - self.purchase_price
+            d['isLongTerm'] = holding_days >= long_term_threshold_days
+            d['holdingDays'] = holding_days
+            d['scheduleFARequired'] = self.is_foreign
+        return d
 
 
 class SipPlan(db.Model):

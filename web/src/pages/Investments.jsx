@@ -29,6 +29,9 @@ export default function Investments() {
   const [category, setCategory] = useState(HOLDING_CATEGORIES[0]);
   const [value, setValue] = useState('');
   const [holdingGoalId, setHoldingGoalId] = useState('');
+  const [isForeign, setIsForeign] = useState(false);
+  const [purchaseDate, setPurchaseDate] = useState('');
+  const [purchasePrice, setPurchasePrice] = useState('');
   const [goalModalOpen, setGoalModalOpen] = useState(false);
 
   const [suggestBusy, setSuggestBusy] = useState(false);
@@ -36,10 +39,21 @@ export default function Investments() {
 
   const createHolding = async () => {
     if (!name.trim() || !value) return;
-    await addHolding({ name: name.trim(), category, value: parseFloat(value), goalId: holdingGoalId ? parseInt(holdingGoalId, 10) : null });
+    await addHolding({
+      name: name.trim(),
+      category,
+      value: parseFloat(value),
+      goalId: holdingGoalId ? parseInt(holdingGoalId, 10) : null,
+      isForeign,
+      purchaseDate: purchaseDate || null,
+      purchasePrice: purchasePrice ? parseFloat(purchasePrice) : null,
+    });
     setName('');
     setValue('');
     setHoldingGoalId('');
+    setIsForeign(false);
+    setPurchaseDate('');
+    setPurchasePrice('');
   };
 
   const askForSuggestions = async () => {
@@ -157,6 +171,7 @@ export default function Investments() {
       <Card>
         {holdings.map((h, idx) => {
           const linkedGoal = data.goals.find((g) => g.id === h.goalId);
+          const hasCostBasis = h.purchaseDate && h.purchasePrice != null;
           return (
             <div key={h.id}>
               {idx > 0 && <Divider />}
@@ -166,7 +181,17 @@ export default function Investments() {
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
                     {h.category}
                     {linkedGoal ? ` · → ${linkedGoal.name}` : ' · General / no goal'}
+                    {h.isForeign ? ' · Foreign asset' : ''}
                   </div>
+                  {hasCostBasis && (
+                    <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, color: h.unrealizedGain >= 0 ? 'var(--teal)' : 'var(--rose)' }}>
+                        {h.unrealizedGain >= 0 ? '+' : ''}{formatINR(h.unrealizedGain)} unrealized
+                      </span>
+                      <Pill tone={h.isLongTerm ? 'good' : 'neutral'}>{h.isLongTerm ? 'Long-term' : 'Short-term'}</Pill>
+                      {h.scheduleFARequired && <Pill tone="warn">Schedule FA</Pill>}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(h.value)}</div>
@@ -177,7 +202,7 @@ export default function Investments() {
           );
         })}
         <Divider />
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           <input type="text" placeholder="Holding name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: '1 1 140px' }} />
           <select
             value={category}
@@ -196,6 +221,26 @@ export default function Investments() {
             <option value="">General / no specific goal</option>
             {data.goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-secondary)' }}>
+            <input type="checkbox" checked={isForeign} onChange={(e) => setIsForeign(e.target.checked)} />
+            Foreign asset (e.g. US stock)
+          </label>
+          <input
+            type="date"
+            value={purchaseDate}
+            onChange={(e) => setPurchaseDate(e.target.value)}
+            title="Purchase date (optional — enables gain/holding-period tracking)"
+            style={{ flex: '1 1 140px' }}
+          />
+          <input
+            type="number"
+            placeholder="Cost basis (total paid)"
+            value={purchasePrice}
+            onChange={(e) => setPurchasePrice(e.target.value)}
+            style={{ flex: '1 1 150px' }}
+          />
           <button className="btn btn--teal" onClick={createHolding}>Add</button>
         </div>
       </Card>

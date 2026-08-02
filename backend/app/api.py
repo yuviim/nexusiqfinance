@@ -402,7 +402,24 @@ def add_holding():
         if not goal:
             return jsonify({'error': 'goalId does not match one of your goals'}), 400
 
-    holding = InvestmentHolding(user_id=user.id, category=payload.get('category') or 'Other', name=name, value=value, goal_id=goal_id)
+    purchase_date = None
+    if payload.get('purchaseDate'):
+        try:
+            purchase_date = datetime.fromisoformat(payload['purchaseDate']).date()
+        except ValueError:
+            return jsonify({'error': 'purchaseDate must be an ISO date string (YYYY-MM-DD)'}), 400
+
+    purchase_price = None
+    if payload.get('purchasePrice') is not None:
+        try:
+            purchase_price = float(payload['purchasePrice'])
+        except (TypeError, ValueError):
+            return jsonify({'error': 'purchasePrice must be a number'}), 400
+
+    holding = InvestmentHolding(
+        user_id=user.id, category=payload.get('category') or 'Other', name=name, value=value, goal_id=goal_id,
+        is_foreign=bool(payload.get('isForeign', False)), purchase_date=purchase_date, purchase_price=purchase_price,
+    )
     db.session.add(holding)
     db.session.commit()
     return jsonify(holding.to_dict()), 201
@@ -432,6 +449,24 @@ def update_holding(holding_id):
             if not goal:
                 return jsonify({'error': 'goalId does not match one of your goals'}), 400
         holding.goal_id = goal_id
+    if 'isForeign' in payload:
+        holding.is_foreign = bool(payload['isForeign'])
+    if 'purchaseDate' in payload:
+        if payload['purchaseDate']:
+            try:
+                holding.purchase_date = datetime.fromisoformat(payload['purchaseDate']).date()
+            except ValueError:
+                return jsonify({'error': 'purchaseDate must be an ISO date string (YYYY-MM-DD)'}), 400
+        else:
+            holding.purchase_date = None
+    if 'purchasePrice' in payload:
+        if payload['purchasePrice'] is not None:
+            try:
+                holding.purchase_price = float(payload['purchasePrice'])
+            except (TypeError, ValueError):
+                return jsonify({'error': 'purchasePrice must be a number'}), 400
+        else:
+            holding.purchase_price = None
     db.session.commit()
     return jsonify(holding.to_dict())
 
