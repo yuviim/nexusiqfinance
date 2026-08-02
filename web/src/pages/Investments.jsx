@@ -20,7 +20,7 @@ const GOAL_ACCENTS = ['teal', 'amber', 'violet', 'rose'];
 const GOAL_ACCENT_VAR = { teal: 'var(--teal)', amber: 'var(--amber)', violet: 'var(--violet)', rose: 'var(--rose)' };
 
 export default function Investments() {
-  const { data, derived, markSip, addHolding, deleteHolding, addGoal, deleteGoal, setProfile, addSipPlan, updateSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit } = useWealth();
+  const { data, derived, markSip, addHolding, deleteHolding, addGoal, deleteGoal, setProfile, addSipPlan, updateSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit, refresh } = useWealth();
   const { token } = useAuth();
   const holdings = data.investments.holdings;
   const total = derived.totalInvestments || 1;
@@ -32,6 +32,10 @@ export default function Investments() {
   const [isForeign, setIsForeign] = useState(false);
   const [purchaseDate, setPurchaseDate] = useState('');
   const [purchasePrice, setPurchasePrice] = useState('');
+  const [ticker, setTicker] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [refreshBusy, setRefreshBusy] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState(null);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
 
   const [suggestBusy, setSuggestBusy] = useState(false);
@@ -47,6 +51,8 @@ export default function Investments() {
       isForeign,
       purchaseDate: purchaseDate || null,
       purchasePrice: purchasePrice ? parseFloat(purchasePrice) : null,
+      ticker: ticker.trim() || null,
+      quantity: quantity ? parseFloat(quantity) : null,
     });
     setName('');
     setValue('');
@@ -54,6 +60,29 @@ export default function Investments() {
     setIsForeign(false);
     setPurchaseDate('');
     setPurchasePrice('');
+    setTicker('');
+    setQuantity('');
+  };
+
+  const refreshPrices = async () => {
+    setRefreshBusy(true);
+    setRefreshMessage(null);
+    try {
+      const res = await api.refreshHoldingPrices(token);
+      if (res.note) {
+        setRefreshMessage(res.note);
+      } else {
+        const parts = [];
+        if (res.updated?.length) parts.push(`Updated ${res.updated.length}: ${res.updated.map((u) => u.ticker).join(', ')}`);
+        if (res.failed?.length) parts.push(`Couldn't fetch: ${res.failed.join(', ')}`);
+        setRefreshMessage(parts.join(' · ') || 'Nothing to update.');
+      }
+      await refresh();
+    } catch (e) {
+      setRefreshMessage(e.message);
+    } finally {
+      setRefreshBusy(false);
+    }
   };
 
   const askForSuggestions = async () => {
@@ -167,7 +196,15 @@ export default function Investments() {
         <RecurringDepositList deposits={data.recurringDeposits} onAdd={addRecurringDeposit} onDelete={deleteRecurringDeposit} />
       </Card>
 
-      <SectionLabel style={{ marginLeft: 2 }}>Holdings</SectionLabel>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginLeft: 2 }}>
+        <SectionLabel style={{ margin: 0 }}>Holdings</SectionLabel>
+        <button className="btn btn--ghost" style={{ fontSize: 12, padding: '5px 10px' }} onClick={refreshPrices} disabled={refreshBusy}>
+          {refreshBusy ? 'Refreshing…' : '↻ Refresh live prices'}
+        </button>
+      </div>
+      {refreshMessage && (
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 2px 8px' }}>{refreshMessage}</p>
+      )}
       <Card>
         {holdings.map((h, idx) => {
           const linkedGoal = data.goals.find((g) => g.id === h.goalId);
@@ -182,6 +219,7 @@ export default function Investments() {
                     {h.category}
                     {linkedGoal ? ` · → ${linkedGoal.name}` : ' · General / no goal'}
                     {h.isForeign ? ' · Foreign asset' : ''}
+                    {h.ticker && h.quantity ? ` · ${h.ticker} × ${h.quantity}` : ''}
                   </div>
                   {hasCostBasis && (
                     <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
@@ -240,6 +278,23 @@ export default function Investments() {
             value={purchasePrice}
             onChange={(e) => setPurchasePrice(e.target.value)}
             style={{ flex: '1 1 150px' }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          <input
+            type="text"
+            placeholder="Ticker (e.g. AMD)"
+            value={ticker}
+            onChange={(e) => setTicker(e.target.value)}
+            title="Optional — pair with quantity to enable one-click live price refresh (foreign/US stocks only)"
+            style={{ flex: '1 1 130px' }}
+          />
+          <input
+            type="number"
+            placeholder="Shares held"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            style={{ flex: '1 1 120px' }}
           />
           <button className="btn btn--teal" onClick={createHolding}>Add</button>
         </div>

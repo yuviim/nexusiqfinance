@@ -76,6 +76,7 @@ export const api = {
   // Investment holdings
   addHolding: (token, holding) => request('/api/holdings', { method: 'POST', body: holding, token }),
   updateHolding: (token, id, patch) => request(`/api/holdings/${id}`, { method: 'PUT', body: patch, token }),
+  refreshHoldingPrices: (token) => request('/api/holdings/refresh-prices', { method: 'POST', token, timeoutMs: 30000 }),
   deleteHolding: (token, id) => request(`/api/holdings/${id}`, { method: 'DELETE', token }),
 
   // Reset

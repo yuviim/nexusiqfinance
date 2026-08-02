@@ -1,4 +1,6 @@
+import os
 from datetime import datetime, timezone
+import requests
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
@@ -419,6 +421,8 @@ def add_holding():
     holding = InvestmentHolding(
         user_id=user.id, category=payload.get('category') or 'Other', name=name, value=value, goal_id=goal_id,
         is_foreign=bool(payload.get('isForeign', False)), purchase_date=purchase_date, purchase_price=purchase_price,
+        ticker=(payload.get('ticker') or '').strip().upper() or None,
+        quantity=float(payload['quantity']) if payload.get('quantity') not in (None, '') else None,
     )
     db.session.add(holding)
     db.session.commit()
@@ -467,6 +471,16 @@ def update_holding(holding_id):
                 return jsonify({'error': 'purchasePrice must be a number'}), 400
         else:
             holding.purchase_price = None
+    if 'ticker' in payload:
+        holding.ticker = (payload['ticker'] or '').strip().upper() or None
+    if 'quantity' in payload:
+        if payload['quantity'] not in (None, ''):
+            try:
+                holding.quantity = float(payload['quantity'])
+            except (TypeError, ValueError):
+                return jsonify({'error': 'quantity must be a number'}), 400
+        else:
+            holding.quantity = None
     db.session.commit()
     return jsonify(holding.to_dict())
 
@@ -481,6 +495,78 @@ def delete_holding(holding_id):
     db.session.delete(holding)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+def _fetch_live_price(ticker):
+    """Fetch the current price for a US ticker from Finnhub, in USD. Returns
+    None on any failure (missing key, bad ticker, network issue) rather than
+    raising — a stale price is better than crashing the whole refresh for one
+    bad entry."""
+    api_key = os.environ.get('FINNHUB_API_KEY')
+    if not api_key:
+        return None
+    try:
+        resp = requests.get(
+            'https://finnhub.io/api/v1/quote',
+            params={'symbol': ticker, 'token': api_key},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        price = data.get('c')  # 'c' = current price, in USD
+        return float(price) if price else None
+    except (requests.RequestException, ValueError, TypeError):
+        return None
+
+
+def _fetch_usd_to_inr_rate():
+    """Free, keyless USD->INR rate. Returns None on failure."""
+    try:
+        resp = requests.get('https://open.er-api.com/v6/latest/USD', timeout=8)
+        resp.raise_for_status()
+        rate = resp.json().get('rates', {}).get('INR')
+        return float(rate) if rate else None
+    except (requests.RequestException, ValueError, TypeError):
+        return None
+
+
+@api_bp.post('/holdings/refresh-prices')
+@jwt_required()
+def refresh_holding_prices():
+    """Manually triggered — fetches live prices for every FOREIGN holding that
+    has both a ticker and a quantity set, converts USD to INR, and updates
+    value accordingly. Never runs automatically; the person clicks a button.
+    Domestic (Indian) tickers aren't covered by this yet — Finnhub's free
+    tier is US-market-focused, so this only handles foreign holdings for now."""
+    user = current_user()
+    if not os.environ.get('FINNHUB_API_KEY'):
+        return jsonify({'error': 'FINNHUB_API_KEY is not set on the server — live price refresh is unavailable until it is.'}), 503
+
+    holdings = InvestmentHolding.query.filter_by(user_id=user.id, is_foreign=True).filter(
+        InvestmentHolding.ticker.isnot(None), InvestmentHolding.quantity.isnot(None)
+    ).all()
+
+    if not holdings:
+        return jsonify({'updated': [], 'failed': [], 'note': 'No foreign holdings have both a ticker and quantity set yet.'})
+
+    usd_to_inr = _fetch_usd_to_inr_rate()
+    if usd_to_inr is None:
+        return jsonify({'error': 'Could not fetch the current USD-to-INR exchange rate — try again shortly.'}), 503
+
+    updated, failed = [], []
+    for h in holdings:
+        price_usd = _fetch_live_price(h.ticker)
+        if price_usd is None:
+            failed.append(h.ticker)
+            continue
+        h.value = price_usd * h.quantity * usd_to_inr
+        updated.append({
+            'ticker': h.ticker, 'name': h.name, 'newValue': h.value,
+            'priceUsd': price_usd, 'usdToInr': usd_to_inr,
+        })
+
+    db.session.commit()
+    return jsonify({'updated': updated, 'failed': failed})
 
 
 # ---- Bank accounts ----

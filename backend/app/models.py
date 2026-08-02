@@ -192,6 +192,8 @@ class InvestmentHolding(db.Model):
     is_foreign = db.Column(db.Boolean, nullable=False, default=False)  # e.g. US stocks — different LTCG threshold, needs Schedule FA
     purchase_date = db.Column(db.Date, nullable=True)  # optional — enables holding-period + gain calculations
     purchase_price = db.Column(db.Float, nullable=True)  # optional — total cost basis (not per-unit), same currency basis as `value`
+    ticker = db.Column(db.String(20), nullable=True)  # optional — enables one-click live price refresh
+    quantity = db.Column(db.Float, nullable=True)  # shares held, paired with ticker
 
     def to_dict(self):
         d = {
@@ -199,6 +201,8 @@ class InvestmentHolding(db.Model):
             'isForeign': self.is_foreign,
             'purchaseDate': self.purchase_date.isoformat() if self.purchase_date else None,
             'purchasePrice': self.purchase_price,
+            'ticker': self.ticker,
+            'quantity': self.quantity,
         }
         if self.purchase_date and self.purchase_price is not None:
             holding_days = (date.today() - self.purchase_date).days
