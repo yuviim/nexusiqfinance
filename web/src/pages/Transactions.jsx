@@ -49,8 +49,23 @@ export default function Transactions() {
       if (!groups[day]) groups[day] = [];
       groups[day].push(t);
     });
-    return Object.entries(groups).sort((a, b) => new Date(b[0]) - new Date(a[0]));
+    return Object.entries(groups)
+      .map(([day, txs]) => {
+        const net = txs.reduce((s, t) => s + (t.type === 'income' ? t.amount : -t.amount), 0);
+        return [day, txs, net];
+      })
+      .sort((a, b) => new Date(b[0]) - new Date(a[0]));
   }, [data.transactions]);
+
+  const [expandedDays, setExpandedDays] = useState(() => new Set());
+  const toggleDay = (day) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return next;
+    });
+  };
 
   return (
     <div className="stack">
@@ -86,51 +101,70 @@ export default function Transactions() {
           </p>
         </Card>
       ) : (
-        grouped.map(([day, txs]) => (
-          <div key={day}>
-            <SectionLabel style={{ marginLeft: 2 }}>{day}</SectionLabel>
-            <Card>
-              {txs.map((t, idx) => (
-                <div key={t.id}>
-                  {idx > 0 && <Divider />}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{t.category}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                        {!!t.bankName && <span>{t.bankName}</span>}
-                        {!!t.bankName && !!t.note && <span> · </span>}
-                        {!!t.note && <span>{t.note}</span>}
+        grouped.map(([day, txs, net]) => {
+          const isExpanded = expandedDays.has(day);
+          return (
+            <div key={day}>
+              <div
+                onClick={() => toggleDay(day)}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  cursor: 'pointer', padding: '8px 2px', userSelect: 'none',
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 0.5 }}>
+                  <span style={{ display: 'inline-block', width: 14, transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>›</span>
+                  {' '}{day.toUpperCase()}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: net >= 0 ? 'var(--teal)' : 'var(--rose)' }}>
+                  {net >= 0 ? '+' : '-'}{formatINR(Math.abs(net))}
+                </span>
+              </div>
+              {isExpanded && (
+                <Card>
+                  {txs.map((t, idx) => (
+                    <div key={t.id}>
+                      {idx > 0 && <Divider />}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>{t.category}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                            {!!t.bankName && <span>{t.bankName}</span>}
+                            {!!t.bankName && !!t.note && <span> · </span>}
+                            {!!t.note && <span>{t.note}</span>}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ fontWeight: 600, fontSize: 15, color: t.type === 'income' ? 'var(--teal)' : 'var(--rose)' }}>
+                            {t.type === 'income' ? '+' : '-'}{formatINR(t.amount)}
+                          </div>
+                          <button
+                            className="btn btn--ghost"
+                            style={{ padding: '6px 10px', fontSize: 12 }}
+                            title="Edit"
+                            onClick={() => { setEditingTx(t); setModalOpen(true); }}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            className="btn btn--ghost"
+                            style={{ padding: '6px 10px', fontSize: 12 }}
+                            title="Delete"
+                            onClick={() => {
+                              if (window.confirm(`Delete "${t.category}" — ${formatINR(t.amount)}?`)) deleteTransaction(t.id);
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ fontWeight: 600, fontSize: 15, color: t.type === 'income' ? 'var(--teal)' : 'var(--rose)' }}>
-                        {t.type === 'income' ? '+' : '-'}{formatINR(t.amount)}
-                      </div>
-                      <button
-                        className="btn btn--ghost"
-                        style={{ padding: '6px 10px', fontSize: 12 }}
-                        title="Edit"
-                        onClick={() => { setEditingTx(t); setModalOpen(true); }}
-                      >
-                        ✎
-                      </button>
-                      <button
-                        className="btn btn--ghost"
-                        style={{ padding: '6px 10px', fontSize: 12 }}
-                        title="Delete"
-                        onClick={() => {
-                          if (window.confirm(`Delete "${t.category}" — ${formatINR(t.amount)}?`)) deleteTransaction(t.id);
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </Card>
-          </div>
-        ))
+                  ))}
+                </Card>
+              )}
+            </div>
+          );
+        })
       )}
 
       {modalOpen && (
