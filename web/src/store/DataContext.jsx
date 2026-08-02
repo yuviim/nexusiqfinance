@@ -332,6 +332,30 @@ export function DataProvider({ children }) {
     [token, refresh]
   );
 
+  const addSipAllocation = useCallback(
+    async (planId, alloc) => {
+      try {
+        await api.addSipAllocation(token, planId, alloc);
+        await refresh();
+      } catch (e) {
+        setSyncError(e.message);
+      }
+    },
+    [token, refresh]
+  );
+
+  const deleteSipAllocation = useCallback(
+    async (planId, allocId) => {
+      try {
+        await api.deleteSipAllocation(token, planId, allocId);
+        await refresh();
+      } catch (e) {
+        setSyncError(e.message);
+      }
+    },
+    [token, refresh]
+  );
+
   const deleteSipPlan = useCallback(
     async (id) => {
       try {
@@ -539,6 +563,8 @@ export function DataProvider({ children }) {
       deleteRecurring,
       addSipPlan,
       updateSipPlan,
+      addSipAllocation,
+      deleteSipAllocation,
       deleteSipPlan,
       addRecurringDeposit,
       updateRecurringDeposit,
@@ -548,7 +574,7 @@ export function DataProvider({ children }) {
       setProfile,
       markSip,
     }),
-    [data, derived, loaded, syncing, syncError, refresh, addTransaction, updateTransaction, deleteTransaction, updateGoal, addGoal, deleteGoal, updateBudget, addBudget, deleteBudget, addAsset, updateAsset, deleteAsset, addHolding, updateHolding, deleteHolding, resetData, addRecurring, deleteRecurring, addSipPlan, updateSipPlan, deleteSipPlan, addRecurringDeposit, updateRecurringDeposit, deleteRecurringDeposit, upsertBankAccount, deleteBankAccount, setProfile, markSip]
+    [data, derived, loaded, syncing, syncError, refresh, addTransaction, updateTransaction, deleteTransaction, updateGoal, addGoal, deleteGoal, updateBudget, addBudget, deleteBudget, addAsset, updateAsset, deleteAsset, addHolding, updateHolding, deleteHolding, resetData, addRecurring, deleteRecurring, addSipPlan, updateSipPlan, addSipAllocation, deleteSipAllocation, deleteSipPlan, addRecurringDeposit, updateRecurringDeposit, deleteRecurringDeposit, upsertBankAccount, deleteBankAccount, setProfile, markSip]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

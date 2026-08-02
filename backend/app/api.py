@@ -4,7 +4,7 @@ import requests
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
-from .models import db, User, Asset, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount, BANK_NAMES, SessionInvalid, SipPlan, RecurringDeposit, apply_loan_payment
+from .models import db, User, Asset, Transaction, Budget, Goal, InvestmentHolding, SipLog, IncomeSource, TaxProfile, AdvanceTaxPayment, RecurringExpense, BankAccount, BANK_NAMES, SessionInvalid, SipPlan, RecurringDeposit, apply_loan_payment, SipFundAllocation
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -771,13 +771,7 @@ def add_sip_plan():
         if not goal:
             return jsonify({'error': 'goalId does not match one of your goals'}), 400
 
-    holding_id = payload.get('linkedHoldingId') or None
-    if holding_id is not None:
-        holding = InvestmentHolding.query.filter_by(id=holding_id, user_id=user.id).first()
-        if not holding:
-            return jsonify({'error': 'linkedHoldingId does not match one of your holdings'}), 400
-
-    plan = SipPlan(user_id=user.id, name=name, amount=amount, goal_id=goal_id, linked_holding_id=holding_id)
+    plan = SipPlan(user_id=user.id, name=name, amount=amount, goal_id=goal_id)
     db.session.add(plan)
     db.session.commit()
     return jsonify(plan.to_dict()), 201
@@ -805,28 +799,65 @@ def update_sip_plan(plan_id):
             if not goal:
                 return jsonify({'error': 'goalId does not match one of your goals'}), 400
         plan.goal_id = goal_id
-    if 'linkedHoldingId' in payload:
-        holding_id = payload['linkedHoldingId'] or None
-        if holding_id is not None:
-            holding = InvestmentHolding.query.filter_by(id=holding_id, user_id=user.id).first()
-            if not holding:
-                return jsonify({'error': 'linkedHoldingId does not match one of your holdings'}), 400
-        plan.linked_holding_id = holding_id
     if payload.get('markPaid'):
         current_month = month_key()
         if plan.last_paid_month != current_month:
             plan.last_paid_month = current_month
-            if plan.linked_holding_id:
-                holding = InvestmentHolding.query.get(plan.linked_holding_id)
+            allocated_total = 0
+            for alloc in plan.allocations:
+                holding = InvestmentHolding.query.get(alloc.holding_id)
                 if holding:
-                    holding.value = (holding.value or 0) + plan.amount
-                # goal.current is intentionally NOT bumped here — the goal's
-                # displayed total is computed as current + sum(linked holdings),
-                # so bumping both would double-count this same payment.
-            elif plan.goal_id:
+                    holding.value = (holding.value or 0) + alloc.amount
+                allocated_total += alloc.amount
+            # Any portion of the SIP not assigned to a specific fund still
+            # counts toward the goal directly — same "informal contribution"
+            # handling as before, just now covering the *unallocated remainder*
+            # instead of the whole amount, so multi-fund SIPs don't double-count.
+            remainder = plan.amount - allocated_total
+            if remainder > 0 and plan.goal_id:
                 goal = Goal.query.get(plan.goal_id)
                 if goal:
-                    goal.current = (goal.current or 0) + plan.amount
+                    goal.current = (goal.current or 0) + remainder
+    db.session.commit()
+    return jsonify(plan.to_dict())
+
+
+@api_bp.post('/sip-plans/<int:plan_id>/allocations')
+@jwt_required()
+def add_sip_allocation(plan_id):
+    user = current_user()
+    plan = SipPlan.query.filter_by(id=plan_id, user_id=user.id).first()
+    if not plan:
+        return jsonify({'error': 'Not found'}), 404
+    payload = request.get_json(silent=True) or {}
+    holding_id = payload.get('holdingId')
+    holding = InvestmentHolding.query.filter_by(id=holding_id, user_id=user.id).first()
+    if not holding:
+        return jsonify({'error': 'holdingId does not match one of your holdings'}), 400
+    try:
+        amount = float(payload.get('amount', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'amount must be a number'}), 400
+    if amount <= 0:
+        return jsonify({'error': 'amount must be positive'}), 400
+
+    alloc = SipFundAllocation(sip_plan_id=plan.id, holding_id=holding_id, amount=amount)
+    db.session.add(alloc)
+    db.session.commit()
+    return jsonify(plan.to_dict()), 201
+
+
+@api_bp.delete('/sip-plans/<int:plan_id>/allocations/<int:alloc_id>')
+@jwt_required()
+def delete_sip_allocation(plan_id, alloc_id):
+    user = current_user()
+    plan = SipPlan.query.filter_by(id=plan_id, user_id=user.id).first()
+    if not plan:
+        return jsonify({'error': 'Not found'}), 404
+    alloc = SipFundAllocation.query.filter_by(id=alloc_id, sip_plan_id=plan.id).first()
+    if not alloc:
+        return jsonify({'error': 'Allocation not found'}), 404
+    db.session.delete(alloc)
     db.session.commit()
     return jsonify(plan.to_dict())
 

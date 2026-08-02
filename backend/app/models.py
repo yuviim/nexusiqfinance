@@ -221,14 +221,33 @@ class SipPlan(db.Model):
     name = db.Column(db.String(120), nullable=False)
     amount = db.Column(db.Float, nullable=False, default=0)
     goal_id = db.Column(db.Integer, db.ForeignKey('goals.id'), nullable=True)
-    linked_holding_id = db.Column(db.Integer, db.ForeignKey('investment_holdings.id'), nullable=True)
     last_paid_month = db.Column(db.String(7), nullable=True)  # 'YYYY-MM' — last month this SIP was marked paid
+    allocations = db.relationship('SipFundAllocation', backref='sip_plan', cascade='all, delete-orphan', lazy=True)
 
     def to_dict(self):
         return {
             'id': self.id, 'name': self.name, 'amount': self.amount,
-            'goalId': self.goal_id, 'linkedHoldingId': self.linked_holding_id,
-            'lastPaidMonth': self.last_paid_month,
+            'goalId': self.goal_id, 'lastPaidMonth': self.last_paid_month,
+            'allocations': [a.to_dict() for a in self.allocations],
+        }
+
+
+class SipFundAllocation(db.Model):
+    """How much of a SIP's total monthly amount goes into a specific holding.
+    A SIP can fund several holdings at once instead of needing a separate SIP
+    row per fund."""
+    __tablename__ = 'sip_fund_allocations'
+    id = db.Column(db.Integer, primary_key=True)
+    sip_plan_id = db.Column(db.Integer, db.ForeignKey('sip_plans.id'), nullable=False, index=True)
+    holding_id = db.Column(db.Integer, db.ForeignKey('investment_holdings.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False, default=0)
+
+    def to_dict(self):
+        holding = InvestmentHolding.query.get(self.holding_id)
+        return {
+            'id': self.id, 'holdingId': self.holding_id,
+            'holdingName': holding.name if holding else None,
+            'amount': self.amount,
         }
 
 

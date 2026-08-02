@@ -20,7 +20,7 @@ const GOAL_ACCENTS = ['teal', 'amber', 'violet', 'rose'];
 const GOAL_ACCENT_VAR = { teal: 'var(--teal)', amber: 'var(--amber)', violet: 'var(--violet)', rose: 'var(--rose)' };
 
 export default function Investments() {
-  const { data, derived, markSip, addHolding, updateHolding, deleteHolding, addGoal, deleteGoal, setProfile, addSipPlan, updateSipPlan, deleteSipPlan, addRecurringDeposit, updateRecurringDeposit, deleteRecurringDeposit, refresh } = useWealth();
+  const { data, derived, markSip, addHolding, updateHolding, deleteHolding, addGoal, deleteGoal, setProfile, addSipPlan, updateSipPlan, addSipAllocation, deleteSipAllocation, deleteSipPlan, addRecurringDeposit, updateRecurringDeposit, deleteRecurringDeposit, refresh } = useWealth();
   const { token } = useAuth();
   const holdings = data.investments.holdings;
   const total = derived.totalInvestments || 1;
@@ -45,11 +45,11 @@ export default function Investments() {
   const [suggestReply, setSuggestReply] = useState(null);
 
   const createHolding = async () => {
-    if (!name.trim() || !value) return;
+    if (!name.trim()) return;
     await addHolding({
       name: name.trim(),
       category,
-      value: parseFloat(value),
+      value: value ? parseFloat(value) : 0,
       goalId: holdingGoalId ? parseInt(holdingGoalId, 10) : null,
       isForeign,
       purchaseDate: purchaseDate || null,
@@ -204,6 +204,8 @@ export default function Investments() {
           onAdd={addSipPlan}
           onMarkPaid={(id) => updateSipPlan(id, { markPaid: true })}
           onDelete={deleteSipPlan}
+          onAddAllocation={addSipAllocation}
+          onDeleteAllocation={deleteSipAllocation}
         />
       </Card>
 
@@ -556,11 +558,10 @@ function HoldingEditForm({ holding, goals, onSave, onCancel }) {
   );
 }
 
-function SipPlanList({ plans, goals, holdings, onAdd, onMarkPaid, onDelete }) {
+function SipPlanList({ plans, goals, holdings, onAdd, onMarkPaid, onDelete, onAddAllocation, onDeleteAllocation }) {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [goalId, setGoalId] = useState('');
-  const [linkedHoldingId, setLinkedHoldingId] = useState('');
 
   const create = async () => {
     if (!name.trim() || !amount) return;
@@ -568,16 +569,13 @@ function SipPlanList({ plans, goals, holdings, onAdd, onMarkPaid, onDelete }) {
       name: name.trim(),
       amount: parseFloat(amount),
       goalId: goalId ? parseInt(goalId, 10) : null,
-      linkedHoldingId: linkedHoldingId ? parseInt(linkedHoldingId, 10) : null,
     });
     setName('');
     setAmount('');
     setGoalId('');
-    setLinkedHoldingId('');
   };
 
   const goalName = (id) => goals.find((g) => g.id === id)?.name;
-  const holdingName = (id) => holdings.find((h) => h.id === id)?.name;
   const currentMonthKey = `${new Date().getFullYear()}-${new Date().getMonth() + 1}`;
 
   return (
@@ -587,30 +585,38 @@ function SipPlanList({ plans, goals, holdings, onAdd, onMarkPaid, onDelete }) {
       )}
       {plans.map((p, idx) => {
         const paidThisMonth = p.lastPaidMonth === currentMonthKey;
+        const allocated = (p.allocations || []).reduce((s, a) => s + a.amount, 0);
         return (
           <div key={p.id}>
             {idx > 0 && <Divider />}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                  {p.goalId && goalName(p.goalId) ? `→ ${goalName(p.goalId)}` : ''}
-                  {p.goalId && p.linkedHoldingId ? ' · ' : ''}
-                  {p.linkedHoldingId && holdingName(p.linkedHoldingId) ? `funds: ${holdingName(p.linkedHoldingId)}` : ''}
-                  {!p.goalId && !p.linkedHoldingId ? 'Not linked to a goal or holding' : ''}
+            <div style={{ padding: '10px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    {p.goalId && goalName(p.goalId) ? `→ ${goalName(p.goalId)}` : 'Not linked to a goal'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(p.amount)}</div>
+                  {paidThisMonth ? (
+                    <span style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 600 }}>Paid ✓</span>
+                  ) : (
+                    <button className="btn btn--teal" style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => onMarkPaid(p.id)}>
+                      Mark as paid
+                    </button>
+                  )}
+                  <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onDelete(p.id)}>✕</button>
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(p.amount)}</div>
-                {paidThisMonth ? (
-                  <span style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 600 }}>Paid ✓</span>
-                ) : (
-                  <button className="btn btn--teal" style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => onMarkPaid(p.id)}>
-                    Mark as paid
-                  </button>
-                )}
-                <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onDelete(p.id)}>✕</button>
-              </div>
+
+              <SipAllocationRows
+                plan={p}
+                holdings={holdings}
+                allocated={allocated}
+                onAddAllocation={onAddAllocation}
+                onDeleteAllocation={onDeleteAllocation}
+              />
             </div>
           </div>
         );
@@ -627,18 +633,59 @@ function SipPlanList({ plans, goals, holdings, onAdd, onMarkPaid, onDelete }) {
           <option value="">No linked goal</option>
           {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
-        <select
-          value={linkedHoldingId}
-          onChange={(e) => setLinkedHoldingId(e.target.value)}
-          style={{ background: 'var(--bg-elevated-2)', color: 'var(--text-primary)', border: '1px solid var(--hairline)', borderRadius: 'var(--radius-md)', padding: '0 10px' }}
-          title="Optional — which holding actually receives this SIP's money"
-        >
-          <option value="">No linked fund</option>
-          {holdings.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-        </select>
         <button className="btn btn--teal" onClick={create}>Add</button>
       </div>
     </>
+  );
+}
+
+function SipAllocationRows({ plan, holdings, allocated, onAddAllocation, onDeleteAllocation }) {
+  const [holdingId, setHoldingId] = useState('');
+  const [allocAmount, setAllocAmount] = useState('');
+  const remainder = plan.amount - allocated;
+
+  const addAllocation = async () => {
+    if (!holdingId || !allocAmount) return;
+    await onAddAllocation(plan.id, { holdingId: parseInt(holdingId, 10), amount: parseFloat(allocAmount) });
+    setHoldingId('');
+    setAllocAmount('');
+  };
+
+  return (
+    <div style={{ marginTop: 8, paddingLeft: 12, borderLeft: '2px solid var(--hairline)' }}>
+      {(plan.allocations || []).map((a) => (
+        <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: 13 }}>
+          <span style={{ color: 'var(--text-secondary)' }}>→ {a.holdingName || 'Unknown fund'}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontWeight: 600 }}>{formatINR(a.amount)}</span>
+            <button className="btn btn--ghost" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => onDeleteAllocation(plan.id, a.id)}>✕</button>
+          </span>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select
+          value={holdingId}
+          onChange={(e) => setHoldingId(e.target.value)}
+          style={{ background: 'var(--bg-elevated-2)', color: 'var(--text-primary)', border: '1px solid var(--hairline)', borderRadius: 'var(--radius-md)', padding: '4px 8px', fontSize: 12 }}
+        >
+          <option value="">+ Add fund…</option>
+          {holdings.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+        </select>
+        <input
+          type="number"
+          placeholder={remainder > 0 ? `up to ${formatINR(remainder)}` : 'Amount'}
+          value={allocAmount}
+          onChange={(e) => setAllocAmount(e.target.value)}
+          style={{ width: 130, fontSize: 12, padding: '4px 8px' }}
+        />
+        <button className="btn btn--ghost" style={{ fontSize: 11, padding: '4px 10px' }} onClick={addAllocation}>Add fund</button>
+        {remainder !== 0 && (
+          <span style={{ fontSize: 11, color: remainder > 0 ? 'var(--text-faint)' : 'var(--rose)' }}>
+            {remainder > 0 ? `${formatINR(remainder)} unallocated (goes to goal directly)` : `${formatINR(-remainder)} over the SIP total`}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

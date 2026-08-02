@@ -91,6 +91,8 @@ export const api = {
   // SIP plans
   addSipPlan: (token, plan) => request('/api/sip-plans', { method: 'POST', body: plan, token }),
   updateSipPlan: (token, id, patch) => request(`/api/sip-plans/${id}`, { method: 'PUT', body: patch, token }),
+  addSipAllocation: (token, planId, alloc) => request(`/api/sip-plans/${planId}/allocations`, { method: 'POST', body: alloc, token }),
+  deleteSipAllocation: (token, planId, allocId) => request(`/api/sip-plans/${planId}/allocations/${allocId}`, { method: 'DELETE', token }),
   deleteSipPlan: (token, id) => request(`/api/sip-plans/${id}`, { method: 'DELETE', token }),
 
   // Recurring deposits (RDs)
