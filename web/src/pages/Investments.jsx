@@ -20,7 +20,7 @@ const GOAL_ACCENTS = ['teal', 'amber', 'violet', 'rose'];
 const GOAL_ACCENT_VAR = { teal: 'var(--teal)', amber: 'var(--amber)', violet: 'var(--violet)', rose: 'var(--rose)' };
 
 export default function Investments() {
-  const { data, derived, markSip, addHolding, deleteHolding, addGoal, deleteGoal, setProfile, addSipPlan, updateSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit, refresh } = useWealth();
+  const { data, derived, markSip, addHolding, updateHolding, deleteHolding, addGoal, deleteGoal, setProfile, addSipPlan, updateSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit, refresh } = useWealth();
   const { token } = useAuth();
   const holdings = data.investments.holdings;
   const total = derived.totalInvestments || 1;
@@ -36,6 +36,7 @@ export default function Investments() {
   const [quantity, setQuantity] = useState('');
   const [refreshBusy, setRefreshBusy] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState(null);
+  const [editingHoldingId, setEditingHoldingId] = useState(null);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
 
   const [suggestBusy, setSuggestBusy] = useState(false);
@@ -209,6 +210,22 @@ export default function Investments() {
         {holdings.map((h, idx) => {
           const linkedGoal = data.goals.find((g) => g.id === h.goalId);
           const hasCostBasis = h.purchaseDate && h.purchasePrice != null;
+          if (editingHoldingId === h.id) {
+            return (
+              <div key={h.id}>
+                {idx > 0 && <Divider />}
+                <HoldingEditForm
+                  holding={h}
+                  goals={data.goals}
+                  onSave={async (patch) => {
+                    await updateHolding(h.id, patch);
+                    setEditingHoldingId(null);
+                  }}
+                  onCancel={() => setEditingHoldingId(null)}
+                />
+              </div>
+            );
+          }
           return (
             <div key={h.id}>
               {idx > 0 && <Divider />}
@@ -233,6 +250,7 @@ export default function Investments() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(h.value)}</div>
+                  <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setEditingHoldingId(h.id)}>Edit</button>
                   <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => deleteHolding(h.id)}>✕</button>
                 </div>
               </div>
@@ -426,6 +444,68 @@ function SipCard({ amount, paid, onSave, onMarkDone }) {
       </div>
       {!paid && !editing && <Pill tone="warn">SIP due this month</Pill>}
     </Card>
+  );
+}
+
+function HoldingEditForm({ holding, goals, onSave, onCancel }) {
+  const [name, setName] = useState(holding.name);
+  const [category, setCategory] = useState(holding.category);
+  const [value, setValue] = useState(String(holding.value));
+  const [goalId, setGoalId] = useState(holding.goalId ? String(holding.goalId) : '');
+  const [isForeign, setIsForeign] = useState(holding.isForeign);
+  const [purchaseDate, setPurchaseDate] = useState(holding.purchaseDate || '');
+  const [purchasePrice, setPurchasePrice] = useState(holding.purchasePrice != null ? String(holding.purchasePrice) : '');
+  const [ticker, setTicker] = useState(holding.ticker || '');
+  const [quantity, setQuantity] = useState(holding.quantity != null ? String(holding.quantity) : '');
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    await onSave({
+      name: name.trim() || holding.name,
+      category,
+      value: parseFloat(value) || 0,
+      goalId: goalId ? parseInt(goalId, 10) : null,
+      isForeign,
+      purchaseDate: purchaseDate || null,
+      purchasePrice: purchasePrice !== '' ? parseFloat(purchasePrice) : null,
+      ticker: ticker.trim() || null,
+      quantity: quantity !== '' ? parseFloat(quantity) : null,
+    });
+    setSaving(false);
+  };
+
+  const selectStyle = { background: 'var(--bg-elevated-2)', color: 'var(--text-primary)', border: '1px solid var(--hairline)', borderRadius: 'var(--radius-md)', padding: '0 10px' };
+
+  return (
+    <div style={{ padding: '10px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>Editing "{holding.name}"</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input type="text" placeholder="Holding name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: '1 1 140px' }} />
+        <select value={category} onChange={(e) => setCategory(e.target.value)} style={selectStyle}>
+          {HOLDING_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+        </select>
+        <input type="number" placeholder="Value" value={value} onChange={(e) => setValue(e.target.value)} style={{ flex: '1 1 120px' }} />
+        <select value={goalId} onChange={(e) => setGoalId(e.target.value)} style={selectStyle}>
+          <option value="">General / no specific goal</option>
+          {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-secondary)' }}>
+          <input type="checkbox" checked={isForeign} onChange={(e) => setIsForeign(e.target.checked)} />
+          Foreign asset (e.g. US stock)
+        </label>
+        <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} style={{ flex: '1 1 140px' }} title="Purchase date" />
+        <input type="number" placeholder="Cost basis (total paid)" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} style={{ flex: '1 1 150px' }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input type="text" placeholder="Ticker (e.g. AMD)" value={ticker} onChange={(e) => setTicker(e.target.value)} style={{ flex: '1 1 130px' }} />
+        <input type="number" placeholder="Shares held" value={quantity} onChange={(e) => setQuantity(e.target.value)} style={{ flex: '1 1 120px' }} />
+        <button className="btn btn--ghost" onClick={onCancel} disabled={saving}>Cancel</button>
+        <button className="btn btn--teal" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+      </div>
+    </div>
   );
 }
 
