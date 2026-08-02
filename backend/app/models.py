@@ -239,9 +239,14 @@ class RecurringDeposit(db.Model):
     bank_name = db.Column(db.String(40), nullable=False)
     name = db.Column(db.String(120), nullable=False)
     amount = db.Column(db.Float, nullable=False, default=0)
+    goal_id = db.Column(db.Integer, db.ForeignKey('goals.id'), nullable=True)  # optional — which goal this RD counts toward
+    last_deposited_month = db.Column(db.String(7), nullable=True)  # 'YYYY-MM' — last month marked deposited
 
     def to_dict(self):
-        return {'id': self.id, 'bankName': self.bank_name, 'name': self.name, 'amount': self.amount}
+        return {
+            'id': self.id, 'bankName': self.bank_name, 'name': self.name, 'amount': self.amount,
+            'goalId': self.goal_id, 'lastDepositedMonth': self.last_deposited_month,
+        }
 
 
 class SipLog(db.Model):

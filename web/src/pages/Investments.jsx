@@ -20,7 +20,7 @@ const GOAL_ACCENTS = ['teal', 'amber', 'violet', 'rose'];
 const GOAL_ACCENT_VAR = { teal: 'var(--teal)', amber: 'var(--amber)', violet: 'var(--violet)', rose: 'var(--rose)' };
 
 export default function Investments() {
-  const { data, derived, markSip, addHolding, updateHolding, deleteHolding, addGoal, deleteGoal, setProfile, addSipPlan, updateSipPlan, deleteSipPlan, addRecurringDeposit, deleteRecurringDeposit, refresh } = useWealth();
+  const { data, derived, markSip, addHolding, updateHolding, deleteHolding, addGoal, deleteGoal, setProfile, addSipPlan, updateSipPlan, deleteSipPlan, addRecurringDeposit, updateRecurringDeposit, deleteRecurringDeposit, refresh } = useWealth();
   const { token } = useAuth();
   const holdings = data.investments.holdings;
   const total = derived.totalInvestments || 1;
@@ -37,6 +37,8 @@ export default function Investments() {
   const [refreshBusy, setRefreshBusy] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState(null);
   const [editingHoldingId, setEditingHoldingId] = useState(null);
+  const [dipCheckBusy, setDipCheckBusy] = useState(false);
+  const [dipResults, setDipResults] = useState(null);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
 
   const [suggestBusy, setSuggestBusy] = useState(false);
@@ -83,6 +85,19 @@ export default function Investments() {
       setRefreshMessage(e.message);
     } finally {
       setRefreshBusy(false);
+    }
+  };
+
+  const checkDips = async () => {
+    setDipCheckBusy(true);
+    setDipResults(null);
+    try {
+      const res = await api.checkDips(token);
+      setDipResults(res);
+    } catch (e) {
+      setDipResults({ error: e.message });
+    } finally {
+      setDipCheckBusy(false);
     }
   };
 
@@ -194,17 +209,49 @@ export default function Investments() {
 
       <SectionLabel style={{ marginLeft: 2 }}>Recurring deposits (RD)</SectionLabel>
       <Card>
-        <RecurringDepositList deposits={data.recurringDeposits} onAdd={addRecurringDeposit} onDelete={deleteRecurringDeposit} />
+        <RecurringDepositList
+          deposits={data.recurringDeposits}
+          goals={data.goals}
+          onAdd={addRecurringDeposit}
+          onMarkDeposited={(id) => updateRecurringDeposit(id, { markDeposited: true })}
+          onDelete={deleteRecurringDeposit}
+        />
       </Card>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginLeft: 2 }}>
         <SectionLabel style={{ margin: 0 }}>Holdings</SectionLabel>
-        <button className="btn btn--ghost" style={{ fontSize: 12, padding: '5px 10px' }} onClick={refreshPrices} disabled={refreshBusy}>
-          {refreshBusy ? 'Refreshing…' : '↻ Refresh live prices'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn--ghost" style={{ fontSize: 12, padding: '5px 10px' }} onClick={checkDips} disabled={dipCheckBusy}>
+            {dipCheckBusy ? 'Checking…' : '📉 Check for dip opportunities'}
+          </button>
+          <button className="btn btn--ghost" style={{ fontSize: 12, padding: '5px 10px' }} onClick={refreshPrices} disabled={refreshBusy}>
+            {refreshBusy ? 'Refreshing…' : '↻ Refresh live prices'}
+          </button>
+        </div>
       </div>
       {refreshMessage && (
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 2px 8px' }}>{refreshMessage}</p>
+      )}
+      {dipResults && (
+        <div style={{ margin: '4px 2px 8px' }}>
+          {dipResults.error ? (
+            <p style={{ fontSize: 12, color: 'var(--rose)', margin: 0 }}>{dipResults.error}</p>
+          ) : dipResults.dips.length === 0 ? (
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0 }}>
+              Nothing down {dipResults.dropThresholdPct}%+ from its 3-month high right now.
+            </p>
+          ) : (
+            dipResults.dips.map((d) => (
+              <div key={d.ticker} className="card" style={{ padding: '10px 14px', marginBottom: 6, background: 'var(--amber-dim)' }}>
+                <span style={{ fontSize: 13 }}>
+                  <strong>{d.name}</strong> ({d.ticker}) is down <strong>{d.pctDrop}%</strong> from its 3-month high
+                  (${d.threeMonthHighUsd.toFixed(2)} → ${d.currentPriceUsd.toFixed(2)}) — you have{' '}
+                  <strong>{formatINR(dipResults.unallocatedSurplus)}</strong> of unallocated surplus. Want to add more?
+                </span>
+              </div>
+            ))
+          )}
+        </div>
       )}
       <Card>
         {holdings.map((h, idx) => {
@@ -595,38 +642,56 @@ function SipPlanList({ plans, goals, holdings, onAdd, onMarkPaid, onDelete }) {
   );
 }
 
-function RecurringDepositList({ deposits, onAdd, onDelete }) {
+function RecurringDepositList({ deposits, goals, onAdd, onMarkDeposited, onDelete }) {
   const [name, setName] = useState('');
   const [bank, setBank] = useState(BANK_NAMES[0]);
   const [amount, setAmount] = useState('');
+  const [goalId, setGoalId] = useState('');
 
   const create = async () => {
     if (!name.trim() || !amount) return;
-    await onAdd({ name: name.trim(), bankName: bank, amount: parseFloat(amount) });
+    await onAdd({ name: name.trim(), bankName: bank, amount: parseFloat(amount), goalId: goalId ? parseInt(goalId, 10) : null });
     setName('');
     setAmount('');
+    setGoalId('');
   };
+
+  const goalName = (id) => goals.find((g) => g.id === id)?.name;
+  const currentMonthKey = `${new Date().getFullYear()}-${new Date().getMonth() + 1}`;
 
   return (
     <>
       {deposits.length === 0 && (
         <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--text-secondary)' }}>No recurring deposits yet.</p>
       )}
-      {deposits.map((rd, idx) => (
-        <div key={rd.id}>
-          {idx > 0 && <Divider />}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{rd.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{rd.bankName}</div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(rd.amount)}</div>
-              <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onDelete(rd.id)}>✕</button>
+      {deposits.map((rd, idx) => {
+        const depositedThisMonth = rd.lastDepositedMonth === currentMonthKey;
+        return (
+          <div key={rd.id}>
+            {idx > 0 && <Divider />}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{rd.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  {rd.bankName}
+                  {rd.goalId && goalName(rd.goalId) ? ` · → ${goalName(rd.goalId)}` : ''}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{formatINR(rd.amount)}</div>
+                {depositedThisMonth ? (
+                  <span style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 600 }}>Deposited ✓</span>
+                ) : (
+                  <button className="btn btn--teal" style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => onMarkDeposited(rd.id)}>
+                    Mark as deposited
+                  </button>
+                )}
+                <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onDelete(rd.id)}>✕</button>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {deposits.length > 0 && <Divider />}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input type="text" placeholder="RD name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: '1 1 140px' }} />
@@ -638,6 +703,14 @@ function RecurringDepositList({ deposits, onAdd, onDelete }) {
           {BANK_NAMES.map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
         <input type="number" placeholder="Monthly amount" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: '1 1 130px' }} />
+        <select
+          value={goalId}
+          onChange={(e) => setGoalId(e.target.value)}
+          style={{ background: 'var(--bg-elevated-2)', color: 'var(--text-primary)', border: '1px solid var(--hairline)', borderRadius: 'var(--radius-md)', padding: '0 10px' }}
+        >
+          <option value="">No linked goal</option>
+          {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
         <button className="btn btn--teal" onClick={create}>Add</button>
       </div>
     </>

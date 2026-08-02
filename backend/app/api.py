@@ -569,6 +569,74 @@ def refresh_holding_prices():
     return jsonify({'updated': updated, 'failed': failed})
 
 
+def _fetch_3month_high(ticker):
+    """Highest daily high over the last ~90 days from Finnhub. Returns None on
+    any failure rather than raising."""
+    api_key = os.environ.get('FINNHUB_API_KEY')
+    if not api_key:
+        return None
+    try:
+        now = int(datetime.now(timezone.utc).timestamp())
+        ninety_days_ago = now - 90 * 24 * 60 * 60
+        resp = requests.get(
+            'https://finnhub.io/api/v1/stock/candle',
+            params={'symbol': ticker, 'resolution': 'D', 'from': ninety_days_ago, 'to': now, 'token': api_key},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        highs = data.get('h') or []
+        return max(highs) if highs else None
+    except (requests.RequestException, ValueError, TypeError):
+        return None
+
+
+@api_bp.get('/holdings/check-dips')
+@jwt_required()
+def check_holding_dips():
+    """Manually triggered — compares each foreign holding's current price to
+    its 3-month high, and flags any that have dropped 10%+, alongside the
+    user's current unallocated surplus. Purely informational: no order is
+    ever placed. The person decides whether to act on it themselves."""
+    user = current_user()
+    if not os.environ.get('FINNHUB_API_KEY'):
+        return jsonify({'error': 'FINNHUB_API_KEY is not set on the server — dip checking is unavailable until it is.'}), 503
+
+    DROP_THRESHOLD_PCT = 10
+
+    holdings = InvestmentHolding.query.filter_by(user_id=user.id, is_foreign=True).filter(
+        InvestmentHolding.ticker.isnot(None)
+    ).all()
+
+    dips = []
+    for h in holdings:
+        current_price = _fetch_live_price(h.ticker)
+        three_month_high = _fetch_3month_high(h.ticker)
+        if current_price is None or not three_month_high:
+            continue
+        pct_drop = (three_month_high - current_price) / three_month_high * 100
+        if pct_drop >= DROP_THRESHOLD_PCT:
+            dips.append({
+                'ticker': h.ticker, 'name': h.name,
+                'currentPriceUsd': current_price, 'threeMonthHighUsd': three_month_high,
+                'pctDrop': round(pct_drop, 1),
+            })
+
+    # Same surplus formula used on the Dashboard and by the Advisor — kept in
+    # sync so this number always means the same thing everywhere in the app.
+    budgets = Budget.query.filter_by(user_id=user.id).all()
+    recurring = RecurringExpense.query.filter_by(user_id=user.id).all()
+    sip_plans = SipPlan.query.filter_by(user_id=user.id).all()
+    recurring_deposits = RecurringDeposit.query.filter_by(user_id=user.id).all()
+    category_budget_total = sum(b.limit for b in budgets)
+    recurring_bills_total = sum(r.amount for r in recurring)
+    surplus = (user.monthly_income or 0) - category_budget_total - recurring_bills_total
+    committed = (user.sip_monthly or 0) + sum(p.amount for p in sip_plans) + sum(r.amount for r in recurring_deposits)
+    unallocated_surplus = surplus - committed
+
+    return jsonify({'dips': dips, 'unallocatedSurplus': unallocated_surplus, 'dropThresholdPct': DROP_THRESHOLD_PCT})
+
+
 # ---- Bank accounts ----
 
 @api_bp.get('/bank-accounts')
@@ -793,7 +861,13 @@ def add_recurring_deposit():
     except (TypeError, ValueError):
         return jsonify({'error': 'amount must be a number'}), 400
 
-    rd = RecurringDeposit(user_id=user.id, name=name, bank_name=bank_name, amount=amount)
+    goal_id = payload.get('goalId') or None
+    if goal_id is not None:
+        goal = Goal.query.filter_by(id=goal_id, user_id=user.id).first()
+        if not goal:
+            return jsonify({'error': 'goalId does not match one of your goals'}), 400
+
+    rd = RecurringDeposit(user_id=user.id, name=name, bank_name=bank_name, amount=amount, goal_id=goal_id)
     db.session.add(rd)
     db.session.commit()
     return jsonify(rd.to_dict()), 201
@@ -818,6 +892,21 @@ def update_recurring_deposit(rd_id):
             rd.amount = float(payload['amount'])
         except (TypeError, ValueError):
             return jsonify({'error': 'amount must be a number'}), 400
+    if 'goalId' in payload:
+        goal_id = payload['goalId'] or None
+        if goal_id is not None:
+            goal = Goal.query.filter_by(id=goal_id, user_id=user.id).first()
+            if not goal:
+                return jsonify({'error': 'goalId does not match one of your goals'}), 400
+        rd.goal_id = goal_id
+    if payload.get('markDeposited'):
+        current_month = month_key()
+        if rd.last_deposited_month != current_month:
+            rd.last_deposited_month = current_month
+            if rd.goal_id:
+                goal = Goal.query.get(rd.goal_id)
+                if goal:
+                    goal.current = (goal.current or 0) + rd.amount
     db.session.commit()
     return jsonify(rd.to_dict())
 
